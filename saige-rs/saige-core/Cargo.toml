@@ -1,0 +1,28 @@
+[package]
+name = "saige-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Statistical algorithms for SAIGE-RS"
+
+[dependencies]
+saige-linalg = { path = "../saige-linalg" }
+saige-geno = { path = "../saige-geno" }
+faer = { workspace = true }
+sprs = { workspace = true }
+statrs = { workspace = true }
+serde = { workspace = true }
+bincode = { workspace = true }
+serde_json = { workspace = true }
+rayon = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+indicatif = { workspace = true }
+num-traits = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = "3"

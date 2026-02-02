@@ -1,0 +1,21 @@
+[package]
+name = "saige-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI binary for SAIGE-RS GWAS tool"
+
+[[bin]]
+name = "saige"
+path = "src/main.rs"
+
+[dependencies]
+saige-core = { path = "../saige-core" }
+saige-geno = { path = "../saige-geno" }
+saige-linalg = { path = "../saige-linalg" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rayon = { workspace = true }
+indicatif = { workspace = true }

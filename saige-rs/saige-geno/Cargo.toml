@@ -1,0 +1,24 @@
+[package]
+name = "saige-geno"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Genotype I/O abstraction for SAIGE-RS"
+
+[dependencies]
+saige-linalg = { path = "../saige-linalg" }
+memmap2 = { workspace = true }
+flate2 = { workspace = true }
+zstd = { workspace = true }
+rusqlite = { workspace = true }
+noodles = { workspace = true }
+byteorder = { workspace = true }
+csv = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = "3"
