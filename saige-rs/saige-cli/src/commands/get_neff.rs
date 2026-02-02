@@ -2,8 +2,8 @@
 //!
 //! saige get-neff --model-file ...
 
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 
 use saige_core::model::serialization::load_model;
 

@@ -140,13 +140,7 @@ pub fn find_root_k1(
 /// Compute saddlepoint probability using Lugannani-Rice formula.
 ///
 /// Returns (p_value, is_saddle_successful).
-pub fn saddle_probability(
-    zeta: f64,
-    mu: &[f64],
-    g: &[f64],
-    q: f64,
-    log_p: bool,
-) -> (f64, bool) {
+pub fn saddle_probability(zeta: f64, mu: &[f64], g: &[f64], q: f64, log_p: bool) -> (f64, bool) {
     let k1 = k0_binom(zeta, mu, g);
     let k2 = k2_binom(zeta, mu, g);
     let temp1 = zeta * q - k1;
@@ -196,13 +190,7 @@ pub fn saddle_probability(
 /// - `q`: Score statistic (g' * (y - mu))
 /// - `pval_noadj`: P-value from normal approximation (fallback)
 /// - `tol`: Root finding tolerance (default: 1e-5)
-pub fn spa_binary(
-    mu: &[f64],
-    g: &[f64],
-    q: f64,
-    pval_noadj: f64,
-    tol: f64,
-) -> SpaResult {
+pub fn spa_binary(mu: &[f64], g: &[f64], q: f64, pval_noadj: f64, tol: f64) -> SpaResult {
     let qinv = -q;
     let log_p = false;
 
@@ -288,7 +276,12 @@ mod tests {
         let n = 50;
         let mu: Vec<f64> = (0..n).map(|i| 0.3 + 0.4 * (i as f64 / n as f64)).collect();
         let g: Vec<f64> = (0..n).map(|i| (i % 3) as f64).collect();
-        let q: f64 = g.iter().zip(mu.iter()).map(|(gi, mi)| gi * (1.0 - mi)).sum::<f64>() * 0.5;
+        let q: f64 = g
+            .iter()
+            .zip(mu.iter())
+            .map(|(gi, mi)| gi * (1.0 - mi))
+            .sum::<f64>()
+            * 0.5;
 
         let result = spa_binary(&mu, &g, q, 0.05, 1e-6);
         assert!(result.pvalue >= 0.0 && result.pvalue <= 1.0);

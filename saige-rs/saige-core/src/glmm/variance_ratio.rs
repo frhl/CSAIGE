@@ -19,7 +19,7 @@
 //!   Final VR = mean(VR_marker)
 
 use anyhow::Result;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 use saige_linalg::dense::DenseMatrix;
 
@@ -102,11 +102,14 @@ where
     let mut per_marker_vr = Vec::new();
     let mut mac_for_vr = Vec::new();
 
-    info!("Estimating variance ratio using up to {} candidate markers", dosage_vectors.len());
+    info!(
+        "Estimating variance ratio using up to {} candidate markers",
+        dosage_vectors.len()
+    );
 
     // Shuffle marker indices for random selection
-    use rand::SeedableRng;
     use rand::seq::SliceRandom;
+    use rand::SeedableRng;
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(config.seed);
     let mut indices: Vec<usize> = (0..dosage_vectors.len()).collect();
     indices.shuffle(&mut rng);
@@ -201,7 +204,10 @@ where
             }
             // Need more markers
             target_markers += 10;
-            debug!("VR CV={:.6} > cutoff, increasing to {} markers", cv, target_markers);
+            debug!(
+                "VR CV={:.6} > cutoff, increasing to {} markers",
+                cv, target_markers
+            );
         }
     }
 
@@ -280,11 +286,7 @@ fn compute_categorical_vr(
 }
 
 /// Select the appropriate variance ratio for a given MAC value.
-pub fn select_variance_ratio(
-    mac: f64,
-    overall_vr: f64,
-    categorical_vr: &[(f64, f64)],
-) -> f64 {
+pub fn select_variance_ratio(mac: f64, overall_vr: f64, categorical_vr: &[(f64, f64)]) -> f64 {
     if categorical_vr.is_empty() {
         return overall_vr;
     }

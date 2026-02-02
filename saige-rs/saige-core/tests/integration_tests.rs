@@ -18,8 +18,8 @@ fn has_fixtures() -> bool {
 
 mod plink_reader {
     use super::*;
-    use saige_geno::traits::GenotypeReader;
     use saige_geno::plink::PlinkReader;
+    use saige_geno::traits::GenotypeReader;
 
     #[test]
     fn test_read_100markers_plink() {
@@ -168,10 +168,10 @@ mod phenotype_parser {
 
 mod sample_intersection {
     use super::*;
-    use saige_geno::plink::PlinkReader;
-    use saige_geno::traits::GenotypeReader;
     use saige_geno::phenotype;
+    use saige_geno::plink::PlinkReader;
     use saige_geno::sample;
+    use saige_geno::traits::GenotypeReader;
 
     #[test]
     fn test_genotype_phenotype_intersection() {
@@ -205,9 +205,9 @@ mod sample_intersection {
 
 mod linalg_with_real_data {
     use super::*;
+    use saige_core::glmm::pcg::OnTheFlyGrm;
     use saige_geno::plink::PlinkReader;
     use saige_geno::traits::GenotypeReader;
-    use saige_core::glmm::pcg::OnTheFlyGrm;
 
     #[test]
     fn test_grm_construction() {
@@ -262,20 +262,21 @@ mod linalg_with_real_data {
         assert!(
             (dot12 - dot21).abs() < 1e-10,
             "GRM not symmetric: {} vs {}",
-            dot12, dot21
+            dot12,
+            dot21
         );
     }
 }
 
 mod ai_reml {
     use super::*;
-    use saige_geno::plink::PlinkReader;
-    use saige_geno::traits::GenotypeReader;
-    use saige_geno::phenotype;
-    use saige_geno::sample;
-    use saige_core::glmm::ai_reml::{AiRemlConfig, fit_ai_reml};
+    use saige_core::glmm::ai_reml::{fit_ai_reml, AiRemlConfig};
     use saige_core::glmm::link::TraitType;
     use saige_core::glmm::pcg::OnTheFlyGrm;
+    use saige_geno::phenotype;
+    use saige_geno::plink::PlinkReader;
+    use saige_geno::sample;
+    use saige_geno::traits::GenotypeReader;
     use saige_linalg::dense::DenseMatrix;
 
     #[test]
@@ -377,7 +378,8 @@ mod ai_reml {
         assert!(
             (mean_mu - prevalence).abs() < 0.15,
             "Mean mu ({:.4}) should be close to prevalence ({:.4})",
-            mean_mu, prevalence
+            mean_mu,
+            prevalence
         );
 
         eprintln!(
@@ -388,8 +390,8 @@ mod ai_reml {
 }
 
 mod score_test {
-    use saige_core::score_test::single_variant::ScoreTestEngine;
     use saige_core::glmm::link::TraitType;
+    use saige_core::score_test::single_variant::ScoreTestEngine;
     use saige_linalg::dense::DenseMatrix;
 
     #[test]
@@ -432,12 +434,18 @@ mod score_test {
             *gi = 2.0; // cases more likely to have alt allele
         }
 
-        let result = engine.test_marker(&geno, "test_snp", "1", 100, "A", "C").unwrap();
+        let result = engine
+            .test_marker(&geno, "test_snp", "1", 100, "A", "C")
+            .unwrap();
 
         // P-value should be between 0 and 1
         assert!((0.0..=1.0).contains(&result.pvalue), "p={}", result.pvalue);
         // Should detect some signal
-        assert!(result.pvalue < 0.5, "Expected some signal, p={}", result.pvalue);
+        assert!(
+            result.pvalue < 0.5,
+            "Expected some signal, p={}",
+            result.pvalue
+        );
     }
 }
 
@@ -481,11 +489,8 @@ mod sparse_grm {
             return;
         }
 
-        let (grm, ids) = sparse_grm_io::read_sparse_grm(
-            Path::new(&mtx_path),
-            Path::new(&id_path),
-        )
-        .expect("Failed to read sparse GRM");
+        let (grm, ids) = sparse_grm_io::read_sparse_grm(Path::new(&mtx_path), Path::new(&id_path))
+            .expect("Failed to read sparse GRM");
 
         // Should have 1000 samples
         assert_eq!(ids.len(), 1000, "Expected 1000 sample IDs");
@@ -533,7 +538,11 @@ mod reference_outputs {
 
         for line in &lines {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            assert!(parts.len() >= 3, "VR line should have >= 3 fields: {}", line);
+            assert!(
+                parts.len() >= 3,
+                "VR line should have >= 3 fields: {}",
+                line
+            );
 
             // First field is the VR value
             let vr: f64 = parts[0].parse().expect("VR value should be a number");
@@ -685,8 +694,8 @@ mod reference_outputs {
 
 mod vcf_reader {
     use super::*;
-    use saige_geno::vcf::VcfReader;
     use saige_geno::traits::GenotypeReader;
+    use saige_geno::vcf::VcfReader;
 
     #[test]
     fn test_read_vcf_10markers() {
@@ -711,7 +720,11 @@ mod vcf_reader {
         assert!(vcf.n_markers() > 0, "Should have markers");
         assert!(vcf.n_samples() > 0, "Should have samples");
 
-        eprintln!("VCF: {} markers x {} samples", vcf.n_markers(), vcf.n_samples());
+        eprintln!(
+            "VCF: {} markers x {} samples",
+            vcf.n_markers(),
+            vcf.n_samples()
+        );
     }
 }
 
@@ -747,7 +760,11 @@ mod group_file {
 
         // Each gene should have variants and annotations
         for group in &gf.groups {
-            assert!(!group.variant_ids.is_empty(), "Gene {} has no variants", group.name);
+            assert!(
+                !group.variant_ids.is_empty(),
+                "Gene {} has no variants",
+                group.name
+            );
             assert_eq!(
                 group.variant_ids.len(),
                 group.annotations.len(),
@@ -781,7 +798,10 @@ mod group_file {
             return;
         }
 
-        let group_path = format!("{}/input/group_new_chrposa1a2_withWeights.txt", fixtures_dir());
+        let group_path = format!(
+            "{}/input/group_new_chrposa1a2_withWeights.txt",
+            fixtures_dir()
+        );
         if !Path::new(&group_path).exists() {
             eprintln!("Skipping: weighted group file not found");
             return;
@@ -863,10 +883,7 @@ mod region_test_reference {
             return;
         }
 
-        let gene_path = format!(
-            "{}/output/example_binary.SAIGE.gene.txt",
-            fixtures_dir()
-        );
+        let gene_path = format!("{}/output/example_binary.SAIGE.gene.txt", fixtures_dir());
 
         if !Path::new(&gene_path).exists() {
             eprintln!("Skipping: gene test output not found");
@@ -882,8 +899,14 @@ mod region_test_reference {
         let header = lines[0];
         assert!(header.contains("Gene"), "Header should contain Gene");
         assert!(header.contains("Pvalue"), "Header should contain Pvalue");
-        assert!(header.contains("Pvalue_Burden"), "Header should contain Pvalue_Burden");
-        assert!(header.contains("Pvalue_SKAT"), "Header should contain Pvalue_SKAT");
+        assert!(
+            header.contains("Pvalue_Burden"),
+            "Header should contain Pvalue_Burden"
+        );
+        assert!(
+            header.contains("Pvalue_SKAT"),
+            "Header should contain Pvalue_SKAT"
+        );
 
         // Parse data lines - fields are space-separated
         for line in &lines[1..] {
@@ -900,7 +923,11 @@ mod region_test_reference {
             if pval_str != "NA" {
                 let pval: f64 = pval_str.parse().unwrap_or(f64::NAN);
                 if !pval.is_nan() {
-                    assert!((0.0..=1.0).contains(&pval), "p-value out of range: {}", pval);
+                    assert!(
+                        (0.0..=1.0).contains(&pval),
+                        "p-value out of range: {}",
+                        pval
+                    );
                 }
             }
         }

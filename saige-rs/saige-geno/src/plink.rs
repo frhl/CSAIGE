@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use memmap2::Mmap;
 
 use crate::traits::{GenotypeReader, MarkerData, MarkerInfo};
@@ -170,10 +170,10 @@ impl PlinkReader {
     fn decode_genotype(byte: u8, offset: usize) -> f64 {
         let bits = (byte >> (offset * 2)) & 0x03;
         match bits {
-            0b00 => 2.0, // Homozygous A1/A1 (ALT/ALT in PLINK convention)
+            0b00 => 2.0,      // Homozygous A1/A1 (ALT/ALT in PLINK convention)
             0b01 => f64::NAN, // Missing
-            0b10 => 1.0, // Heterozygous A1/A2
-            0b11 => 0.0, // Homozygous A2/A2 (REF/REF)
+            0b10 => 1.0,      // Heterozygous A1/A2
+            0b11 => 0.0,      // Homozygous A2/A2 (REF/REF)
             _ => unreachable!(),
         }
     }

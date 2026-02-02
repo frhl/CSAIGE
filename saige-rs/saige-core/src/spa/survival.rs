@@ -5,7 +5,6 @@
 //!
 //! Reference: SAIGE src/SPA_survival.cpp
 
-
 /// CGF K(t) for survival SPA.
 ///
 /// For survival traits with complementary log-log link,

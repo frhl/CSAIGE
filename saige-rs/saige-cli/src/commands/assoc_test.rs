@@ -5,17 +5,17 @@
 use std::io::BufWriter;
 use std::path::Path;
 
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 use tracing::info;
 
 use saige_core::glmm::link::TraitType;
 use saige_core::model::serialization::load_model;
-use saige_core::score_test::single_variant::{
-    ScoreTestEngine, write_results_header, write_result_line,
-};
 use saige_core::score_test::region::{
-    self, RegionTestConfig, RegionTestResult, write_region_header, write_region_line,
+    self, write_region_header, write_region_line, RegionTestConfig, RegionTestResult,
+};
+use saige_core::score_test::single_variant::{
+    write_result_line, write_results_header, ScoreTestEngine,
 };
 use saige_geno::group_file::GroupFile;
 use saige_geno::traits::GenotypeReader;
@@ -139,7 +139,11 @@ pub fn run(args: AssocTestArgs) -> Result<()> {
         use_fast_spa: args.is_fast_spa,
         spa_tol: 1e-6,
         spa_pval_cutoff: args.spa_pval_cutoff,
-        y: if model.trait_type == TraitType::Binary { Some(model.y.clone()) } else { None },
+        y: if model.trait_type == TraitType::Binary {
+            Some(model.y.clone())
+        } else {
+            None
+        },
     };
 
     // Check if group file is provided for region-based tests

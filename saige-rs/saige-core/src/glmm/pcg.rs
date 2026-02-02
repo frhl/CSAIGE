@@ -4,7 +4,8 @@
 //! - On-the-fly GRM-vector products from packed genotypes
 //! - Diagonal preconditioning from Sigma
 
-use saige_linalg::decomposition::{PcgSolver, PcgResult};
+use rayon::prelude::*;
+use saige_linalg::decomposition::{PcgResult, PcgSolver};
 
 /// Configuration for the SAIGE PCG solver.
 #[derive(Debug, Clone)]
@@ -63,7 +64,11 @@ where
             .zip(w_precond.iter())
             .map(|(vi, wi)| {
                 let diag = tau[0] * wi + tau[1];
-                if diag.abs() > 1e-30 { vi / diag } else { *vi }
+                if diag.abs() > 1e-30 {
+                    vi / diag
+                } else {
+                    *vi
+                }
             })
             .collect()
     };
@@ -112,32 +117,59 @@ impl OnTheFlyGrm {
         }
     }
 
-    /// Compute GRM * v on-the-fly.
-    #[allow(clippy::needless_range_loop)]
+    /// Compute GRM * v on-the-fly using rayon parallelism.
+    ///
+    /// Splits marker columns into chunks and processes them in parallel.
+    /// Each thread accumulates a partial result vector, then all partials
+    /// are reduced into the final result.
     pub fn mat_vec(&self, v: &[f64]) -> Vec<f64> {
         assert_eq!(v.len(), self.n_samples);
-        let mut result = vec![0.0; self.n_samples];
+        let n = self.n_samples;
 
-        for m in 0..self.n_markers {
-            let offset = m * self.n_samples;
-            // dot = g_m' * v
-            let mut dot = 0.0;
-            for i in 0..self.n_samples {
-                dot += self.std_genotypes[offset + i] * v[i];
-            }
-            // result += g_m * dot
-            for i in 0..self.n_samples {
-                result[i] += self.std_genotypes[offset + i] * dot;
-            }
+        if self.n_markers == 0 {
+            return vec![0.0; n];
         }
 
-        // Scale by 1/M
+        // Chunk the flat genotype array by marker columns (each column = n elements).
+        // Each chunk is a contiguous slice of one or more marker columns.
+        let chunk_size = {
+            let n_threads = rayon::current_num_threads().max(1);
+            let markers_per_thread = self.n_markers / n_threads;
+            markers_per_thread.max(64) * n
+        };
+
         let scale = 1.0 / self.n_markers as f64;
-        for r in &mut result {
-            *r *= scale;
-        }
 
-        result
+        let result = self
+            .std_genotypes
+            .par_chunks(chunk_size)
+            .fold(
+                || vec![0.0; n],
+                |mut acc, geno_chunk| {
+                    let n_markers_in_chunk = geno_chunk.len() / n;
+                    for m in 0..n_markers_in_chunk {
+                        let col = &geno_chunk[m * n..(m + 1) * n];
+                        // dot = g_m' * v
+                        let dot: f64 = col.iter().zip(v.iter()).map(|(g, vi)| g * vi).sum();
+                        // acc += g_m * dot
+                        for (a, g) in acc.iter_mut().zip(col.iter()) {
+                            *a += g * dot;
+                        }
+                    }
+                    acc
+                },
+            )
+            .reduce(
+                || vec![0.0; n],
+                |mut a, b| {
+                    for (ai, bi) in a.iter_mut().zip(b.iter()) {
+                        *ai += *bi;
+                    }
+                    a
+                },
+            );
+
+        result.into_iter().map(|r| r * scale).collect()
     }
 }
 
@@ -176,7 +208,9 @@ mod tests {
             assert!(
                 (xi - bi / 1.1).abs() < 1e-5,
                 "x[{}]={}, expected {}",
-                i, xi, bi / 1.1
+                i,
+                xi,
+                bi / 1.1
             );
         }
     }

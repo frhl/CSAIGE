@@ -3,8 +3,8 @@
 //! Provides permutation p-values as a validation mechanism
 //! for the asymptotic score test.
 
-use rand::SeedableRng;
 use rand::seq::SliceRandom;
+use rand::SeedableRng;
 
 /// Compute a permutation p-value for a test statistic.
 ///
@@ -51,7 +51,9 @@ mod tests {
         // Under the null (random genotypes, random residuals), p-value should be ~uniform
         let n = 100;
         let g: Vec<f64> = (0..n).map(|i| (i % 3) as f64).collect();
-        let residuals: Vec<f64> = (0..n).map(|i| if i % 2 == 0 { 0.1 } else { -0.1 }).collect();
+        let residuals: Vec<f64> = (0..n)
+            .map(|i| if i % 2 == 0 { 0.1 } else { -0.1 })
+            .collect();
         let obs_stat = g
             .iter()
             .zip(residuals.iter())

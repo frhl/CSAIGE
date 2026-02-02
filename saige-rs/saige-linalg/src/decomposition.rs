@@ -209,13 +209,7 @@ impl PcgSolver {
     /// - `precond`: function computing M^{-1} * v (preconditioner)
     /// - `b`: right-hand side vector
     /// - `x0`: optional initial guess (if None, uses zero vector)
-    pub fn solve<F, P>(
-        &self,
-        mat_vec: F,
-        precond: P,
-        b: &[f64],
-        x0: Option<&[f64]>,
-    ) -> PcgResult
+    pub fn solve<F, P>(&self, mat_vec: F, precond: P, b: &[f64], x0: Option<&[f64]>) -> PcgResult
     where
         F: Fn(&[f64]) -> Vec<f64>,
         P: Fn(&[f64]) -> Vec<f64>,
@@ -313,13 +307,7 @@ impl PcgSolver {
         let precond = move |v: &[f64]| -> Vec<f64> {
             v.iter()
                 .zip(diag.iter())
-                .map(|(vi, di)| {
-                    if di.abs() > 1e-30 {
-                        vi / di
-                    } else {
-                        *vi
-                    }
-                })
+                .map(|(vi, di)| if di.abs() > 1e-30 { vi / di } else { *vi })
                 .collect()
         };
 
@@ -336,13 +324,7 @@ impl PcgSolver {
         let precond = move |v: &[f64]| -> Vec<f64> {
             v.iter()
                 .zip(diag.iter())
-                .map(|(vi, di)| {
-                    if di.abs() > 1e-30 {
-                        vi / di
-                    } else {
-                        *vi
-                    }
-                })
+                .map(|(vi, di)| if di.abs() > 1e-30 { vi / di } else { *vi })
                 .collect()
         };
 
@@ -406,7 +388,14 @@ mod tests {
         // Verify: A*x should equal b
         let ax = a.mat_vec(&x);
         for i in 0..3 {
-            assert!((ax[i] - b[i]).abs() < 1e-10, "ax[{}]={} != b[{}]={}", i, ax[i], i, b[i]);
+            assert!(
+                (ax[i] - b[i]).abs() < 1e-10,
+                "ax[{}]={} != b[{}]={}",
+                i,
+                ax[i],
+                i,
+                b[i]
+            );
         }
     }
 
@@ -443,7 +432,12 @@ mod tests {
                 assert!(
                     (qr_prod.get(i, j) - a.get(i, j)).abs() < 1e-10,
                     "QR[{},{}] = {}, A[{},{}] = {}",
-                    i, j, qr_prod.get(i, j), i, j, a.get(i, j)
+                    i,
+                    j,
+                    qr_prod.get(i, j),
+                    i,
+                    j,
+                    a.get(i, j)
                 );
             }
         }

@@ -183,9 +183,7 @@ impl DenseMatrix {
 
     /// Scalar multiplication.
     pub fn scale(&self, s: f64) -> DenseMatrix {
-        let inner = Mat::from_fn(self.nrows(), self.ncols(), |i, j| {
-            self.inner.read(i, j) * s
-        });
+        let inner = Mat::from_fn(self.nrows(), self.ncols(), |i, j| self.inner.read(i, j) * s);
         DenseMatrix { inner }
     }
 

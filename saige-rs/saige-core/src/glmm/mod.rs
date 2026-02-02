@@ -7,8 +7,8 @@
 //! - LOCO (Leave-One-Chromosome-Out) procedure
 
 pub mod ai_reml;
+pub mod family;
+pub mod link;
+pub mod loco;
 pub mod pcg;
 pub mod variance_ratio;
-pub mod loco;
-pub mod link;
-pub mod family;

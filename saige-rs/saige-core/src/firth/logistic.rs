@@ -8,8 +8,8 @@
 //! Reference: SAIGE R/Firth.R
 
 use anyhow::Result;
+use saige_linalg::decomposition::{CholeskyDecomp, QrDecomp};
 use saige_linalg::dense::DenseMatrix;
-use saige_linalg::decomposition::{QrDecomp, CholeskyDecomp};
 
 /// Configuration for Firth's logistic regression.
 #[derive(Debug, Clone)]
@@ -55,11 +55,7 @@ pub struct FirthResult {
 /// - `y`: Binary outcome (0/1), length n
 /// - `x`: Design matrix (n x p), includes intercept and covariates
 /// - `config`: Firth configuration
-pub fn firth_logistic(
-    y: &[f64],
-    x: &DenseMatrix,
-    config: &FirthConfig,
-) -> Result<FirthResult> {
+pub fn firth_logistic(y: &[f64], x: &DenseMatrix, config: &FirthConfig) -> Result<FirthResult> {
     let n = y.len();
     let p = x.ncols();
     assert_eq!(x.nrows(), n);
@@ -73,10 +69,13 @@ pub fn firth_logistic(
         let mu: Vec<f64> = eta.iter().map(|&e| logistic(e)).collect();
 
         // Working weights W = mu * (1 - mu)
-        let w: Vec<f64> = mu.iter().map(|&m| {
-            let v = m * (1.0 - m);
-            v.max(1e-10)
-        }).collect();
+        let w: Vec<f64> = mu
+            .iter()
+            .map(|&m| {
+                let v = m * (1.0 - m);
+                v.max(1e-10)
+            })
+            .collect();
 
         // Compute hat matrix diagonal via QR
         // H = W^{1/2} X (X'WX)^{-1} X' W^{1/2}
@@ -135,7 +134,10 @@ pub fn firth_logistic(
             // Compute final SE and p-value
             let eta_final = x.mat_vec(&beta);
             let mu_final: Vec<f64> = eta_final.iter().map(|&e| logistic(e)).collect();
-            let w_final: Vec<f64> = mu_final.iter().map(|&m| (m * (1.0 - m)).max(1e-10)).collect();
+            let w_final: Vec<f64> = mu_final
+                .iter()
+                .map(|&m| (m * (1.0 - m)).max(1e-10))
+                .collect();
             let info_final = x.xtwx(&w_final);
 
             let se = match CholeskyDecomp::new(&info_final) {
@@ -254,7 +256,11 @@ mod tests {
         let mut x_data = vec![0.0; n * 2];
         for i in 0..n {
             x_data[i] = 1.0; // intercept
-            x_data[n + i] = if i < 15 || (25..35).contains(&i) { 1.0 } else { 0.0 }; // genotype
+            x_data[n + i] = if i < 15 || (25..35).contains(&i) {
+                1.0
+            } else {
+                0.0
+            }; // genotype
         }
         let x = DenseMatrix::from_col_major(n, 2, x_data);
 
@@ -281,6 +287,9 @@ mod tests {
         let result = firth_logistic(&y, &x, &config).unwrap();
 
         // Firth should still produce a finite estimate (unlike standard logistic)
-        assert!(result.beta[1].is_finite(), "Firth beta should be finite even with separation");
+        assert!(
+            result.beta[1].is_finite(),
+            "Firth beta should be finite even with separation"
+        );
     }
 }

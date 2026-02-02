@@ -97,7 +97,11 @@ fn compute_variant_scores(
         // Project out X: g_tilde = g - X * (X'VX)^{-1} * X'V * g
         let xvx_inv_xv_g = engine.xvx_inv_xv.mat_vec(&gw);
         let x_proj = engine.x.mat_vec(&xvx_inv_xv_g);
-        let g_tilde: Vec<f64> = gw.iter().zip(x_proj.iter()).map(|(gi, xi)| gi - xi).collect();
+        let g_tilde: Vec<f64> = gw
+            .iter()
+            .zip(x_proj.iter())
+            .map(|(gi, xi)| gi - xi)
+            .collect();
 
         g_tildes.push(g_tilde);
     }
@@ -180,11 +184,7 @@ pub fn burden_test(
 /// P-value via Satterthwaite's moment-matching method:
 /// Q ~ kappa * chi^2(df), where kappa and df are chosen to match
 /// the first two moments of the distribution of Q under H0.
-pub fn skat_test(
-    genotypes: &[Vec<f64>],
-    weights: &[f64],
-    engine: &ScoreTestEngine,
-) -> Result<f64> {
+pub fn skat_test(genotypes: &[Vec<f64>], weights: &[f64], engine: &ScoreTestEngine) -> Result<f64> {
     let m = genotypes.len();
     if m == 0 {
         return Ok(1.0);
@@ -296,10 +296,8 @@ pub fn skat_o_test(
 
         for j in 0..m {
             for k in 0..m {
-                let phi_rho_jk =
-                    (1.0 - rho) * stats.phi.get(j, k) + rho * phi_row_sums[k];
-                let phi_rho_kj =
-                    (1.0 - rho) * stats.phi.get(k, j) + rho * phi_row_sums[j];
+                let phi_rho_jk = (1.0 - rho) * stats.phi.get(j, k) + rho * phi_row_sums[k];
+                let phi_rho_kj = (1.0 - rho) * stats.phi.get(k, j) + rho * phi_row_sums[j];
                 var_q_rho += phi_rho_jk * phi_rho_kj;
             }
         }
@@ -353,7 +351,10 @@ pub fn mac_category_counts(mac_values: &[f64], boundaries: &[f64]) -> Vec<usize>
     let mut counts = vec![0usize; n_cats.min(8)]; // SAIGE uses 8 categories max
 
     for &mac in mac_values {
-        let cat = boundaries.iter().position(|&b| mac <= b).unwrap_or(boundaries.len());
+        let cat = boundaries
+            .iter()
+            .position(|&b| mac <= b)
+            .unwrap_or(boundaries.len());
         if cat < counts.len() {
             counts[cat] += 1;
         }
@@ -499,13 +500,7 @@ mod tests {
         let genotypes: Vec<Vec<f64>> = (0..5)
             .map(|j| {
                 (0..n)
-                    .map(|i| {
-                        if (i + j) % 10 == 0 {
-                            1.0
-                        } else {
-                            0.0
-                        }
-                    })
+                    .map(|i| if (i + j) % 10 == 0 { 1.0 } else { 0.0 })
                     .collect()
             })
             .collect();
@@ -519,11 +514,7 @@ mod tests {
 
         let (p_skato, _rho) =
             skat_o_test(&genotypes, &weights, &engine, &default_rho_values()).unwrap();
-        assert!(
-            (0.0..=1.0).contains(&p_skato),
-            "skato p={}",
-            p_skato
-        );
+        assert!((0.0..=1.0).contains(&p_skato), "skato p={}", p_skato);
 
         // SKAT-O should be at least as significant as the less significant test
         // (it picks the best rho)

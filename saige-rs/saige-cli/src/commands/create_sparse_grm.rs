@@ -2,8 +2,8 @@
 //!
 //! saige create-sparse-grm --plink-file ... --output-prefix ... --relatedness-cutoff 0.125
 
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 use tracing::info;
 
 use saige_core::grm::sparse::compute_sparse_grm;
@@ -46,16 +46,12 @@ pub fn run(args: CreateSparseGrmArgs) -> Result<()> {
         reader.n_samples()
     );
 
-    let (sparse_grm, n_markers) = compute_sparse_grm(
-        &mut reader,
-        args.min_maf,
-        args.relatedness_cutoff,
-    )?;
+    let (sparse_grm, n_markers) =
+        compute_sparse_grm(&mut reader, args.min_maf, args.relatedness_cutoff)?;
 
-    let mtx_path =
-        std::path::Path::new(&args.output_prefix).with_extension("sparseGRM.mtx");
-    let ids_path = std::path::Path::new(&args.output_prefix)
-        .with_extension("sparseGRM.mtx.sampleIDs.txt");
+    let mtx_path = std::path::Path::new(&args.output_prefix).with_extension("sparseGRM.mtx");
+    let ids_path =
+        std::path::Path::new(&args.output_prefix).with_extension("sparseGRM.mtx.sampleIDs.txt");
 
     let sample_ids = reader.sample_ids().to_vec();
     write_sparse_grm(&sparse_grm, &sample_ids, &mtx_path, &ids_path)?;

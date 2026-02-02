@@ -4,7 +4,7 @@
 //! efficient than PLINK 1.x bed files. Full implementation requires
 //! linking against the pgenlib C library.
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use crate::traits::{GenotypeReader, MarkerData, MarkerInfo};
 
@@ -20,10 +20,18 @@ impl PgenReader {
 }
 
 impl GenotypeReader for PgenReader {
-    fn n_markers(&self) -> usize { 0 }
-    fn n_samples(&self) -> usize { 0 }
-    fn sample_ids(&self) -> &[String] { &[] }
-    fn set_sample_subset(&mut self, _ids: &[String]) -> Result<()> { Ok(()) }
+    fn n_markers(&self) -> usize {
+        0
+    }
+    fn n_samples(&self) -> usize {
+        0
+    }
+    fn sample_ids(&self) -> &[String] {
+        &[]
+    }
+    fn set_sample_subset(&mut self, _ids: &[String]) -> Result<()> {
+        Ok(())
+    }
     fn read_marker(&mut self, _index: u64) -> Result<MarkerData> {
         bail!("PGEN reader not yet implemented")
     }

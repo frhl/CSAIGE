@@ -4,11 +4,11 @@
 //! saddlepoint approximation, score tests, Firth's regression,
 //! GRM construction, LD matrix computation, and model serialization.
 
-pub mod glmm;
-pub mod spa;
-pub mod score_test;
 pub mod firth;
+pub mod glmm;
 pub mod grm;
 pub mod ld;
 pub mod model;
+pub mod score_test;
+pub mod spa;
 pub mod util;

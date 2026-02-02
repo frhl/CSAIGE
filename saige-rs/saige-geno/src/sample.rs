@@ -78,10 +78,7 @@ mod tests {
             .into_iter()
             .map(String::from)
             .collect();
-        let src2: Vec<String> = vec!["C", "A", "E"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        let src2: Vec<String> = vec!["C", "A", "E"].into_iter().map(String::from).collect();
 
         let result = intersect_samples(&[&src1, &src2]);
         assert_eq!(result.ids, vec!["A", "C"]);

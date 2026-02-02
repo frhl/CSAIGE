@@ -6,9 +6,10 @@
 //!
 //! Uses rayon for parallel computation over marker chunks.
 
-use saige_linalg::dense::DenseMatrix;
-use saige_geno::traits::GenotypeReader;
 use anyhow::Result;
+use rayon::prelude::*;
+use saige_geno::traits::GenotypeReader;
+use saige_linalg::dense::DenseMatrix;
 use tracing::info;
 
 /// Compute the dense GRM from genotype data.
@@ -27,8 +28,8 @@ pub fn compute_dense_grm(
 
     info!("Computing dense GRM: {} samples x {} markers", n, m);
 
-    let mut grm = DenseMatrix::zeros(n, n);
-    let mut n_markers_used = 0;
+    // Phase 1: Read all markers sequentially and standardize (I/O bound).
+    let mut std_genotypes: Vec<Vec<f64>> = Vec::new();
 
     for marker_idx in 0..m {
         let data = reader.read_marker(marker_idx as u64)?;
@@ -46,7 +47,6 @@ pub fn compute_dense_grm(
         let sd = var.sqrt();
         let mean = 2.0 * af;
 
-        // Standardize dosages
         let std_g: Vec<f64> = data
             .dosages
             .iter()
@@ -56,27 +56,48 @@ pub fn compute_dense_grm(
             })
             .collect();
 
-        // Rank-1 update: GRM += g * g'
-        for i in 0..n {
-            for j in i..n {
-                let val = std_g[i] * std_g[j];
-                let current = grm.get(i, j);
-                grm.set(i, j, current + val);
-                if i != j {
-                    grm.set(j, i, current + val);
-                }
-            }
-        }
-
-        n_markers_used += 1;
+        std_genotypes.push(std_g);
     }
 
-    // Normalize by number of markers
+    let n_markers_used = std_genotypes.len();
+
+    // Phase 2: Parallelize rank-1 accumulation by splitting rows into blocks.
+    // Each thread computes a block of rows of the upper triangle of GRM.
+    let row_block_size = (n / rayon::current_num_threads().max(1)).max(1);
+
+    // Flat upper-triangle storage: for row i, cols i..n
+    let grm_data: Vec<Vec<f64>> = (0..n)
+        .into_par_iter()
+        .chunks(row_block_size)
+        .map(|row_chunk| {
+            let mut block = Vec::new();
+            for &i in &row_chunk {
+                let mut row_vals = vec![0.0; n - i];
+                for std_g in &std_genotypes {
+                    let gi = std_g[i];
+                    for (k, val) in row_vals.iter_mut().enumerate() {
+                        *val += gi * std_g[i + k];
+                    }
+                }
+                block.push(row_vals);
+            }
+            block
+        })
+        .flatten()
+        .collect();
+
+    // Assemble into DenseMatrix
+    let mut grm = DenseMatrix::zeros(n, n);
     if n_markers_used > 0 {
         let scale = 1.0 / n_markers_used as f64;
-        for i in 0..n {
-            for j in 0..n {
-                grm.set(i, j, grm.get(i, j) * scale);
+        for (i, row_vals) in grm_data.iter().enumerate() {
+            for (k, &val) in row_vals.iter().enumerate() {
+                let j = i + k;
+                let scaled = val * scale;
+                grm.set(i, j, scaled);
+                if i != j {
+                    grm.set(j, i, scaled);
+                }
             }
         }
     }
@@ -91,51 +112,72 @@ pub fn compute_dense_grm(
 }
 
 /// Compute the GRM from pre-loaded dosage vectors (for testing).
-pub fn compute_grm_from_dosages(
-    dosages: &[Vec<f64>],
-    allele_freqs: &[f64],
-) -> DenseMatrix {
+pub fn compute_grm_from_dosages(dosages: &[Vec<f64>], allele_freqs: &[f64]) -> DenseMatrix {
     let m = dosages.len();
     if m == 0 {
         return DenseMatrix::zeros(0, 0);
     }
     let n = dosages[0].len();
-    let mut grm = DenseMatrix::zeros(n, n);
 
-    let mut n_used = 0;
-    for (g, &af) in dosages.iter().zip(allele_freqs.iter()) {
-        let var = 2.0 * af * (1.0 - af);
-        if var < 1e-10 {
-            continue;
-        }
-        let sd = var.sqrt();
-        let mean = 2.0 * af;
-
-        let std_g: Vec<f64> = g
-            .iter()
-            .map(|&d| {
-                let d = if d.is_nan() { mean } else { d };
-                (d - mean) / sd
-            })
-            .collect();
-
-        for i in 0..n {
-            for j in i..n {
-                let val = std_g[i] * std_g[j];
-                grm.set(i, j, grm.get(i, j) + val);
-                if i != j {
-                    grm.set(j, i, grm.get(j, i) + val);
-                }
+    // Standardize all markers
+    let std_genotypes: Vec<Vec<f64>> = dosages
+        .iter()
+        .zip(allele_freqs.iter())
+        .filter_map(|(g, &af)| {
+            let var = 2.0 * af * (1.0 - af);
+            if var < 1e-10 {
+                return None;
             }
-        }
-        n_used += 1;
-    }
+            let sd = var.sqrt();
+            let mean = 2.0 * af;
 
+            Some(
+                g.iter()
+                    .map(|&d| {
+                        let d = if d.is_nan() { mean } else { d };
+                        (d - mean) / sd
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+
+    let n_used = std_genotypes.len();
+
+    // Parallelize rank-1 accumulation by row blocks
+    let row_block_size = (n / rayon::current_num_threads().max(1)).max(1);
+
+    let grm_data: Vec<Vec<f64>> = (0..n)
+        .into_par_iter()
+        .chunks(row_block_size)
+        .map(|row_chunk| {
+            let mut block = Vec::new();
+            for &i in &row_chunk {
+                let mut row_vals = vec![0.0; n - i];
+                for std_g in &std_genotypes {
+                    let gi = std_g[i];
+                    for (k, val) in row_vals.iter_mut().enumerate() {
+                        *val += gi * std_g[i + k];
+                    }
+                }
+                block.push(row_vals);
+            }
+            block
+        })
+        .flatten()
+        .collect();
+
+    let mut grm = DenseMatrix::zeros(n, n);
     if n_used > 0 {
         let scale = 1.0 / n_used as f64;
-        for i in 0..n {
-            for j in 0..n {
-                grm.set(i, j, grm.get(i, j) * scale);
+        for (i, row_vals) in grm_data.iter().enumerate() {
+            for (k, &val) in row_vals.iter().enumerate() {
+                let j = i + k;
+                let scaled = val * scale;
+                grm.set(i, j, scaled);
+                if i != j {
+                    grm.set(j, i, scaled);
+                }
             }
         }
     }
@@ -152,8 +194,8 @@ mod tests {
         // With many markers and unrelated samples, diagonal should be ~1
         let n = 5;
         let m = 500;
-        use rand::SeedableRng;
         use rand::Rng;
+        use rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
         let mut dosages = Vec::new();

@@ -2,22 +2,24 @@
 //!
 //! saige fit-null --plink-file ... --pheno-file ... --pheno-col ... --trait-type binary --output-prefix ...
 
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 use tracing::info;
 
+use saige_core::glmm::ai_reml::{fit_ai_reml, AiRemlConfig};
 use saige_core::glmm::link::TraitType;
-use saige_core::glmm::ai_reml::{AiRemlConfig, fit_ai_reml};
 use saige_core::glmm::pcg::OnTheFlyGrm;
-use saige_core::glmm::variance_ratio::{VarianceRatioConfig, VarianceRatioResult, estimate_variance_ratio, write_variance_ratio_file};
+use saige_core::glmm::variance_ratio::{
+    estimate_variance_ratio, write_variance_ratio_file, VarianceRatioConfig, VarianceRatioResult,
+};
 use saige_core::model::null_model::NullModel;
 use saige_core::model::serialization;
-use saige_geno::plink::PlinkReader;
 use saige_geno::phenotype;
+use saige_geno::plink::PlinkReader;
 use saige_geno::sample;
 use saige_geno::traits::GenotypeReader;
-use saige_linalg::dense::DenseMatrix;
 use saige_linalg::decomposition::PcgSolver;
+use saige_linalg::dense::DenseMatrix;
 
 #[derive(Args)]
 pub struct FitNullArgs {
@@ -110,13 +112,20 @@ pub fn run(args: FitNullArgs) -> Result<()> {
 
     // Load genotype data
     let mut plink = PlinkReader::new(&args.plink_file)?;
-    info!("Loaded {} markers x {} samples from PLINK files", plink.n_markers(), plink.n_samples());
+    info!(
+        "Loaded {} markers x {} samples from PLINK files",
+        plink.n_markers(),
+        plink.n_samples()
+    );
 
     // Load phenotype data
     let covar_cols: Vec<String> = if args.covar_cols.is_empty() {
         Vec::new()
     } else {
-        args.covar_cols.split(',').map(|s| s.trim().to_string()).collect()
+        args.covar_cols
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect()
     };
 
     let pheno_data = phenotype::parse_phenotype_file(
@@ -125,7 +134,10 @@ pub fn run(args: FitNullArgs) -> Result<()> {
         &covar_cols,
         &args.sample_id_col,
     )?;
-    info!("Loaded phenotypes for {} samples", pheno_data.sample_ids.len());
+    info!(
+        "Loaded phenotypes for {} samples",
+        pheno_data.sample_ids.len()
+    );
 
     // Intersect samples
     let geno_ids = plink.sample_ids().to_vec();
@@ -193,8 +205,15 @@ pub fn run(args: FitNullArgs) -> Result<()> {
             vr_macs.push(data.mac);
         }
     }
-    info!("Using {} markers for GRM (MAF >= {})", grm_dosages.len(), args.min_maf);
-    info!("Available markers for VR estimation: {} (MAC >= 20)", vr_dosages.len());
+    info!(
+        "Using {} markers for GRM (MAF >= {})",
+        grm_dosages.len(),
+        args.min_maf
+    );
+    info!(
+        "Available markers for VR estimation: {} (MAC >= 20)",
+        vr_dosages.len()
+    );
 
     // Build on-the-fly GRM (takes reference, copies internally)
     let grm = OnTheFlyGrm::new(&grm_dosages, &grm_afs);
@@ -264,7 +283,11 @@ pub fn run(args: FitNullArgs) -> Result<()> {
                 .zip(w_for_vr.iter())
                 .map(|(pvi, wi)| {
                     let diag = tau[0] / wi.max(1e-30) + tau[1];
-                    if diag.abs() > 1e-30 { pvi / diag } else { *pvi }
+                    if diag.abs() > 1e-30 {
+                        pvi / diag
+                    } else {
+                        *pvi
+                    }
                 })
                 .collect()
         };
@@ -328,7 +351,8 @@ pub fn run(args: FitNullArgs) -> Result<()> {
     info!("Model saved to {}", model_path.display());
 
     if args.save_json {
-        let json_path = std::path::Path::new(&args.output_prefix).with_extension("saige.model.json");
+        let json_path =
+            std::path::Path::new(&args.output_prefix).with_extension("saige.model.json");
         serialization::save_model_json(&model, &json_path)?;
         info!("JSON sidecar saved to {}", json_path.display());
     }

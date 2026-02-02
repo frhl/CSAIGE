@@ -13,9 +13,7 @@ use saige_linalg::dense::DenseMatrix;
 ///
 /// Returns an m x m matrix where entry (i,j) is the Pearson
 /// correlation between dosage vectors of variants i and j.
-pub fn compute_ld_matrix(
-    dosage_vectors: &[Vec<f64>],
-) -> DenseMatrix {
+pub fn compute_ld_matrix(dosage_vectors: &[Vec<f64>]) -> DenseMatrix {
     let m = dosage_vectors.len();
     if m == 0 {
         return DenseMatrix::zeros(0, 0);

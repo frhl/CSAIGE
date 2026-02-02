@@ -12,13 +12,7 @@ use statrs::distribution::{ContinuousCDF, Normal};
 /// Fast CGF K(t) for binomial SPA.
 ///
 /// K(t) = sum_{i: g_i != 0} log(1 - mu_i + mu_i * exp(g_i * t)) + NAmu*t + 0.5*NAsigma*t^2
-pub fn k0_fast_binom(
-    t: f64,
-    mu_nb: &[f64],
-    g_nb: &[f64],
-    na_mu: f64,
-    na_sigma: f64,
-) -> f64 {
+pub fn k0_fast_binom(t: f64, mu_nb: &[f64], g_nb: &[f64], na_mu: f64, na_sigma: f64) -> f64 {
     let mut sum = 0.0;
     for (mi, gi) in mu_nb.iter().zip(g_nb.iter()) {
         sum += (1.0 - mi + mi * (gi * t).exp()).ln();
@@ -44,12 +38,7 @@ pub fn k1_adj_fast_binom(
 }
 
 /// Fast K''(t).
-pub fn k2_fast_binom(
-    t: f64,
-    mu_nb: &[f64],
-    g_nb: &[f64],
-    na_sigma: f64,
-) -> f64 {
+pub fn k2_fast_binom(t: f64, mu_nb: &[f64], g_nb: &[f64], na_sigma: f64) -> f64 {
     let mut sum = 0.0;
     for (mi, gi) in mu_nb.iter().zip(g_nb.iter()) {
         let e = (-gi * t).exp();
@@ -180,7 +169,11 @@ pub fn saddle_probability_fast(
         }
     } else {
         let p0 = norm.cdf(z_test);
-        if log_p { -p0.ln() } else { -p0 }
+        if log_p {
+            -p0.ln()
+        } else {
+            -p0
+        }
     };
 
     (pval, true)
@@ -189,10 +182,7 @@ pub fn saddle_probability_fast(
 /// Partition genotypes and mu into zero/nonzero subsets for fast SPA.
 ///
 /// Returns (g_nonzero, mu_nonzero, NAmu, NAsigma).
-pub fn partition_for_fast_spa(
-    g: &[f64],
-    mu: &[f64],
-) -> (Vec<f64>, Vec<f64>, f64, f64) {
+pub fn partition_for_fast_spa(g: &[f64], mu: &[f64]) -> (Vec<f64>, Vec<f64>, f64, f64) {
     let mut g_nb = Vec::new(); // nonzero genotypes
     let mut mu_nb = Vec::new(); // mu for nonzero genotypes
     let mut na_mu = 0.0; // mean for zero-genotype approximation
@@ -271,10 +261,13 @@ mod tests {
         let n = 50;
         let mu: Vec<f64> = (0..n).map(|i| 0.2 + 0.6 * (i as f64 / n as f64)).collect();
         // Many zeros
-        let g: Vec<f64> = (0..n)
-            .map(|i| if i % 5 == 0 { 1.0 } else { 0.0 })
-            .collect();
-        let q: f64 = g.iter().zip(mu.iter()).map(|(gi, mi)| gi * (1.0 - mi)).sum::<f64>() * 0.3;
+        let g: Vec<f64> = (0..n).map(|i| if i % 5 == 0 { 1.0 } else { 0.0 }).collect();
+        let q: f64 = g
+            .iter()
+            .zip(mu.iter())
+            .map(|(gi, mi)| gi * (1.0 - mi))
+            .sum::<f64>()
+            * 0.3;
 
         let standard = super::super::binary::spa_binary(&mu, &g, q, 0.5, 1e-6);
         let fast = spa_binary_fast(&mu, &g, q, 0.5, 1e-6);

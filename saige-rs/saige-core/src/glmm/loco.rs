@@ -4,14 +4,15 @@
 //! excluding chromosome c from the GRM. This avoids proximal
 //! contamination and produces calibrated test statistics.
 
-use std::collections::HashMap;
 use anyhow::Result;
+use std::collections::HashMap;
 use tracing::info;
 
 use saige_linalg::dense::DenseMatrix;
 
-use super::ai_reml::{AiRemlConfig, fit_ai_reml};
+use super::ai_reml::{fit_ai_reml, AiRemlConfig};
 use super::link::TraitType;
+use super::pcg::OnTheFlyGrm;
 
 /// Results from LOCO procedure: one null model per chromosome.
 #[derive(Debug, Clone)]
@@ -59,8 +60,6 @@ pub fn run_loco(
     trait_type: TraitType,
     config: &AiRemlConfig,
 ) -> Result<LocoResults> {
-    let n = y.len();
-
     // Get unique chromosomes
     let mut chroms: Vec<String> = marker_chroms
         .iter()
@@ -85,51 +84,16 @@ pub fn run_loco(
             .map(|(i, _)| i)
             .collect();
 
-        let excluded_dosages: Vec<&Vec<f64>> = excluded_indices
+        let excluded_dosages_owned: Vec<Vec<f64>> = excluded_indices
             .iter()
-            .map(|&i| &marker_dosages[i])
+            .map(|&i| marker_dosages[i].clone())
             .collect();
 
-        let excluded_afs: Vec<f64> = excluded_indices
-            .iter()
-            .map(|&i| marker_afs[i])
-            .collect();
+        let excluded_afs: Vec<f64> = excluded_indices.iter().map(|&i| marker_afs[i]).collect();
 
-        // Build GRM-vector product function for this chromosome exclusion
-        let n_markers = excluded_dosages.len();
-        let n_samples = n;
-
-        // Precompute standardized genotypes
-        let mut std_geno = vec![0.0; n_samples * n_markers];
-        for (m, (&dosage_vec, &af)) in excluded_dosages.iter().zip(excluded_afs.iter()).enumerate() {
-            let denom = (2.0 * af * (1.0 - af)).sqrt();
-            if denom > 1e-10 {
-                let mean = 2.0 * af;
-                for i in 0..n_samples {
-                    let g = if dosage_vec[i].is_nan() { mean } else { dosage_vec[i] };
-                    std_geno[m * n_samples + i] = (g - mean) / denom;
-                }
-            }
-        }
-
-        let grm_vec = move |v: &[f64]| -> Vec<f64> {
-            let mut result = vec![0.0; n_samples];
-            for m in 0..n_markers {
-                let offset = m * n_samples;
-                let mut dot = 0.0;
-                for i in 0..n_samples {
-                    dot += std_geno[offset + i] * v[i];
-                }
-                for i in 0..n_samples {
-                    result[i] += std_geno[offset + i] * dot;
-                }
-            }
-            let scale = if n_markers > 0 { 1.0 / n_markers as f64 } else { 0.0 };
-            for r in &mut result {
-                *r *= scale;
-            }
-            result
-        };
+        // Build GRM using OnTheFlyGrm, which automatically gets rayon parallelization
+        let grm = OnTheFlyGrm::new(&excluded_dosages_owned, &excluded_afs);
+        let grm_vec = move |v: &[f64]| -> Vec<f64> { grm.mat_vec(v) };
 
         let reml_result = fit_ai_reml(y, x, grm_vec, trait_type, config)?;
 
@@ -178,8 +142,16 @@ mod tests {
             seed: 42,
         };
 
-        let result = run_loco(&y, &x, &marker_chroms, &marker_dosages, &marker_afs,
-                              TraitType::Quantitative, &config).unwrap();
+        let result = run_loco(
+            &y,
+            &x,
+            &marker_chroms,
+            &marker_dosages,
+            &marker_afs,
+            TraitType::Quantitative,
+            &config,
+        )
+        .unwrap();
 
         // Should have results for both chromosomes
         assert!(result.per_chrom.contains_key("1"), "Missing chr1 results");
@@ -189,7 +161,12 @@ mod tests {
         // Each result should have proper dimensions
         for (chrom, res) in &result.per_chrom {
             assert_eq!(res.mu.len(), n, "chr{} mu has wrong length", chrom);
-            assert_eq!(res.residuals.len(), n, "chr{} residuals has wrong length", chrom);
+            assert_eq!(
+                res.residuals.len(),
+                n,
+                "chr{} residuals has wrong length",
+                chrom
+            );
             assert!(res.tau[0] > 0.0, "chr{} tau_e should be positive", chrom);
         }
     }

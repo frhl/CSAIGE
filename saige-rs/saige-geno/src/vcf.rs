@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 use crate::traits::{GenotypeReader, MarkerData, MarkerInfo};
 
@@ -204,7 +204,11 @@ impl GenotypeReader for VcfReader {
     fn read_marker(&mut self, index: u64) -> Result<MarkerData> {
         let idx = index as usize;
         if idx >= self.variants.len() {
-            bail!("Variant index {} out of range ({})", idx, self.variants.len());
+            bail!(
+                "Variant index {} out of range ({})",
+                idx,
+                self.variants.len()
+            );
         }
 
         let record_idx = self.variants[idx].record_index;

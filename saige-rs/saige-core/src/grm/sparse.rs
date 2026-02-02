@@ -7,8 +7,8 @@
 use anyhow::Result;
 use tracing::info;
 
-use saige_linalg::sparse::SparseMatrix;
 use saige_geno::traits::GenotypeReader;
+use saige_linalg::sparse::SparseMatrix;
 
 /// Construct a sparse GRM from genotype data.
 ///

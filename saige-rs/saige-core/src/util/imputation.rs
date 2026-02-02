@@ -12,9 +12,16 @@ pub fn impute_missing_mean(dosages: &mut [f64], af: f64) {
 
 /// Center genotypes: subtract mean.
 pub fn center_genotypes(dosages: &mut [f64]) {
-    let (sum, n) = dosages.iter().fold((0.0, 0), |(s, n), &d| {
-        if !d.is_nan() { (s + d, n + 1) } else { (s, n) }
-    });
+    let (sum, n) = dosages.iter().fold(
+        (0.0, 0),
+        |(s, n), &d| {
+            if !d.is_nan() {
+                (s + d, n + 1)
+            } else {
+                (s, n)
+            }
+        },
+    );
     let mean = if n > 0 { sum / n as f64 } else { 0.0 };
     for d in dosages.iter_mut() {
         if !d.is_nan() {
@@ -26,7 +33,11 @@ pub fn center_genotypes(dosages: &mut [f64]) {
 /// Standardize genotypes: subtract mean and divide by std dev.
 pub fn standardize_genotypes(dosages: &mut [f64]) {
     let (sum, sum_sq, n) = dosages.iter().fold((0.0, 0.0, 0), |(s, ss, n), &d| {
-        if !d.is_nan() { (s + d, ss + d * d, n + 1) } else { (s, ss, n) }
+        if !d.is_nan() {
+            (s + d, ss + d * d, n + 1)
+        } else {
+            (s, ss, n)
+        }
     });
     if n == 0 {
         return;

@@ -4,9 +4,9 @@
 //! and the PCG (Preconditioned Conjugate Gradient) solver used
 //! throughout SAIGE's statistical algorithms.
 
+pub mod decomposition;
 pub mod dense;
 pub mod sparse;
-pub mod decomposition;
 
 pub use dense::DenseMatrix;
 pub use sparse::SparseMatrix;

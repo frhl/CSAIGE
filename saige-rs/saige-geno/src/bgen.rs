@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::traits::{GenotypeReader, MarkerData, MarkerInfo};
 
@@ -78,9 +78,9 @@ impl BgenReader {
         } else {
             // Try to read from .sample file (check multiple conventions)
             let candidates = [
-                path.with_extension("sample"),                           // foo.sample
-                PathBuf::from(format!("{}.sample", path.display())),     // foo.bgen.sample
-                PathBuf::from(format!("{}.samples", path.display())),    // foo.bgen.samples
+                path.with_extension("sample"),                        // foo.sample
+                PathBuf::from(format!("{}.sample", path.display())),  // foo.bgen.sample
+                PathBuf::from(format!("{}.samples", path.display())), // foo.bgen.samples
             ];
             let sample_file = candidates.iter().find(|p| p.exists());
             if let Some(sample_path) = sample_file {
@@ -153,7 +153,10 @@ impl BgenReader {
 
         let layout = (flags >> 2) & 0x0F;
         if layout != 2 {
-            bail!("Only BGEN layout 2 (v1.2) is supported, got layout {}", layout);
+            bail!(
+                "Only BGEN layout 2 (v1.2) is supported, got layout {}",
+                layout
+            );
         }
 
         let has_sample_ids = (flags >> 31) & 0x01 == 1;
@@ -266,9 +269,10 @@ impl BgenReader {
 
             let chrom_len = cursor.read_u16::<LittleEndian>()? as usize;
             let chrom_start = cursor.position() as usize;
-            let chrom = std::str::from_utf8(&data[pos + chrom_start..pos + chrom_start + chrom_len])
-                .unwrap_or("?")
-                .to_string();
+            let chrom =
+                std::str::from_utf8(&data[pos + chrom_start..pos + chrom_start + chrom_len])
+                    .unwrap_or("?")
+                    .to_string();
             cursor.set_position((chrom_start + chrom_len) as u64);
 
             let variant_pos = cursor.read_u32::<LittleEndian>()?;
@@ -367,11 +371,7 @@ impl BgenReader {
         self.parse_layout2_probabilities(&decompressed, n_alleles)
     }
 
-    fn parse_layout2_probabilities(
-        &self,
-        data: &[u8],
-        _n_alleles: usize,
-    ) -> Result<Vec<f64>> {
+    fn parse_layout2_probabilities(&self, data: &[u8], _n_alleles: usize) -> Result<Vec<f64>> {
         use byteorder::{LittleEndian, ReadBytesExt};
         use std::io::Cursor;
 
@@ -414,11 +414,11 @@ impl BgenReader {
                     continue;
                 }
 
-                let p_aa = read_bits(data, prob_start, bit_offset, bits_per_prob) as f64
-                    / max_val as f64;
+                let p_aa =
+                    read_bits(data, prob_start, bit_offset, bits_per_prob) as f64 / max_val as f64;
                 bit_offset += bits_per_prob;
-                let p_ab = read_bits(data, prob_start, bit_offset, bits_per_prob) as f64
-                    / max_val as f64;
+                let p_ab =
+                    read_bits(data, prob_start, bit_offset, bits_per_prob) as f64 / max_val as f64;
                 bit_offset += bits_per_prob;
 
                 dosages[i] = p_ab + 2.0 * (1.0 - p_aa - p_ab);

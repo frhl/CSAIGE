@@ -3,7 +3,7 @@
 //! Defines the family (distribution + link) for the GLMM,
 //! providing working weights and working residuals for IRLS.
 
-use super::link::{LinkFunction, TraitType, get_link};
+use super::link::{get_link, LinkFunction, TraitType};
 
 /// A GLMM family: distribution + link function.
 pub struct Family {
@@ -56,7 +56,11 @@ impl Family {
         mu.iter()
             .map(|&m| {
                 let v = self.link.variance(m);
-                if v > 1e-30 { v } else { 1e-30 }
+                if v > 1e-30 {
+                    v
+                } else {
+                    1e-30
+                }
             })
             .collect()
     }
@@ -64,9 +68,7 @@ impl Family {
     /// Compute mu * (1 - mu) for binary traits, or 1 for quantitative.
     pub fn mu_eta2(&self, mu: &[f64]) -> Vec<f64> {
         match self.trait_type {
-            TraitType::Binary | TraitType::Survival => {
-                mu.iter().map(|&m| m * (1.0 - m)).collect()
-            }
+            TraitType::Binary | TraitType::Survival => mu.iter().map(|&m| m * (1.0 - m)).collect(),
             TraitType::Quantitative => vec![1.0; mu.len()],
         }
     }
@@ -81,9 +83,7 @@ impl Family {
         let mu = self.inv_link(eta);
         match self.trait_type {
             TraitType::Binary | TraitType::Survival => {
-                mu.iter()
-                    .map(|&m| m.clamp(1e-10, 1.0 - 1e-10))
-                    .collect()
+                mu.iter().map(|&m| m.clamp(1e-10, 1.0 - 1e-10)).collect()
             }
             TraitType::Quantitative => mu,
         }

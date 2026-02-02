@@ -4,8 +4,8 @@
 //! Format: magic bytes (SGMD) + version (u32) + bincode payload.
 //! Optional JSON sidecar for human inspection.
 
+use anyhow::{bail, Result};
 use std::path::Path;
-use anyhow::{Result, bail};
 
 use super::null_model::NullModel;
 

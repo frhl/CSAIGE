@@ -2,8 +2,8 @@
 //!
 //! saige ld-matrix --bgen-file ... --group-file ... --output-prefix ...
 
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 use tracing::info;
 
 use saige_core::ld::matrix::{compute_ld_matrix, write_ld_matrix};
@@ -96,15 +96,19 @@ pub fn run(args: LdMatrixArgs) -> Result<()> {
         let ld = compute_ld_matrix(&dosages);
 
         // Write output
-        let output_path = std::path::Path::new(&args.output_prefix)
-            .join(format!("{}.ld.txt", gene));
+        let output_path =
+            std::path::Path::new(&args.output_prefix).join(format!("{}.ld.txt", gene));
 
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         write_ld_matrix(&ld, &valid_ids, &output_path)?;
 
-        info!("Gene {}: {} variants, LD matrix written", gene, valid_ids.len());
+        info!(
+            "Gene {}: {} variants, LD matrix written",
+            gene,
+            valid_ids.len()
+        );
     }
 
     info!("LD matrix computation complete");

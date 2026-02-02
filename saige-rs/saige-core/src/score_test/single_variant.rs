@@ -8,15 +8,15 @@
 //!
 //! Reference: SAIGE src/SAIGE_test.cpp
 
-use statrs::distribution::{ChiSquared, ContinuousCDF};
 use anyhow::Result;
+use statrs::distribution::{ChiSquared, ContinuousCDF};
 
 use saige_linalg::dense::DenseMatrix;
 
-use crate::spa::binary::spa_binary;
-use crate::spa::fast::spa_binary_fast;
 use crate::glmm::link::TraitType;
 use crate::glmm::variance_ratio::select_variance_ratio;
+use crate::spa::binary::spa_binary;
+use crate::spa::fast::spa_binary_fast;
 
 /// Result of a single-variant score test.
 #[derive(Debug, Clone)]
@@ -137,7 +137,11 @@ impl ScoreTestEngine {
         // Compute g_tilde = g - X * (X'VX)^{-1} * X'V * g
         let xvx_inv_xv_g = self.xvx_inv_xv.mat_vec(g);
         let x_proj = self.x.mat_vec(&xvx_inv_xv_g);
-        let g_tilde: Vec<f64> = g.iter().zip(x_proj.iter()).map(|(gi, xi)| gi - xi).collect();
+        let g_tilde: Vec<f64> = g
+            .iter()
+            .zip(x_proj.iter())
+            .map(|(gi, xi)| gi - xi)
+            .collect();
 
         // Score statistic: S = g_tilde' * residuals
         let score: f64 = g_tilde
@@ -187,11 +191,7 @@ impl ScoreTestEngine {
         };
 
         // Beta and SE: BETA = S / var_t, SE = sqrt(var_t_star) / var_t
-        let beta = if var_t > 1e-30 {
-            score / var_t
-        } else {
-            0.0
-        };
+        let beta = if var_t > 1e-30 { score / var_t } else { 0.0 };
         let se_beta = if var_t > 1e-30 {
             (var_t_star).sqrt() / var_t
         } else {
@@ -305,8 +305,16 @@ pub fn write_result_line(
         if result.spa_converged { 1 } else { 0 },
         result.var_t,
         result.var_t_star,
-        if result.af_cases.is_nan() { "NA".to_string() } else { format!("{}", result.af_cases) },
-        if result.af_controls.is_nan() { "NA".to_string() } else { format!("{}", result.af_controls) },
+        if result.af_cases.is_nan() {
+            "NA".to_string()
+        } else {
+            format!("{}", result.af_cases)
+        },
+        if result.af_controls.is_nan() {
+            "NA".to_string()
+        } else {
+            format!("{}", result.af_controls)
+        },
         result.n_cases,
         result.n_controls,
     )?;
@@ -345,9 +353,7 @@ mod tests {
         };
 
         let g = vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 0.0, 1.0, 0.0, 1.0];
-        let result = engine
-            .test_marker(&g, "rs1", "1", 100, "A", "T")
-            .unwrap();
+        let result = engine.test_marker(&g, "rs1", "1", 100, "A", "T").unwrap();
 
         assert!(result.pvalue >= 0.0 && result.pvalue <= 1.0);
         assert!(result.af >= 0.0 && result.af <= 1.0);
@@ -367,6 +373,10 @@ mod tests {
         // Cases: (0+1+2+0+1) / (2*5) = 4/10 = 0.4
         assert!((af_cases - 0.4).abs() < 1e-10, "af_cases={}", af_cases);
         // Controls: (0+2+1+0+0) / (2*5) = 3/10 = 0.3
-        assert!((af_controls - 0.3).abs() < 1e-10, "af_controls={}", af_controls);
+        assert!(
+            (af_controls - 0.3).abs() < 1e-10,
+            "af_controls={}",
+            af_controls
+        );
     }
 }

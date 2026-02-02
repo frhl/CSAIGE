@@ -8,10 +8,11 @@
 //! (tau_e * W + tau_g * GRM)^{-1} * y.
 
 use anyhow::Result;
-use tracing::{info, warn, debug};
+use rayon::prelude::*;
+use tracing::{debug, info, warn};
 
-use saige_linalg::dense::DenseMatrix;
 use saige_linalg::decomposition::PcgSolver;
+use saige_linalg::dense::DenseMatrix;
 
 use super::family::Family;
 use super::link::TraitType;
@@ -113,11 +114,15 @@ where
     let pcg = PcgSolver::new(config.pcg_tol, config.pcg_max_iter);
 
     // Generate random vectors for trace estimation
-    use rand::SeedableRng;
     use rand::Rng;
+    use rand::SeedableRng;
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(config.seed);
     let random_vectors: Vec<Vec<f64>> = (0..config.n_random_vectors)
-        .map(|_| (0..n).map(|_| if rng.gen::<bool>() { 1.0 } else { -1.0 }).collect())
+        .map(|_| {
+            (0..n)
+                .map(|_| if rng.gen::<bool>() { 1.0 } else { -1.0 })
+                .collect()
+        })
         .collect();
 
     let mut converged = false;
@@ -145,7 +150,11 @@ where
                 .zip(w.iter())
                 .map(|(vi, wi)| {
                     let diag = tau[0] / wi.max(1e-30) + tau[1];
-                    if diag.abs() > 1e-30 { vi / diag } else { *vi }
+                    if diag.abs() > 1e-30 {
+                        vi / diag
+                    } else {
+                        *vi
+                    }
                 })
                 .collect()
         };
@@ -187,25 +196,33 @@ where
         // score[0] = -0.5 * (trace(Sigma^{-1} * W) - y'P*y) (simplified)
         // score[1] = -0.5 * (trace(Sigma^{-1} * GRM) - y'P*GRM*P*y) (simplified)
 
-        // Trace estimation using random vectors
-        let mut trace_w = 0.0;
-        let mut trace_grm = 0.0;
+        // Trace estimation using random vectors (parallelized with rayon).
+        // Each random vector is independent: solve Sigma^{-1} * rv via PCG,
+        // then compute trace contributions for both W and GRM derivatives.
+        let (trace_w, trace_grm) = random_vectors
+            .par_iter()
+            .map(|rv| {
+                let pcg_rv = pcg.solve(sigma_vec, precond, rv, None);
+                let sigma_inv_rv = pcg_rv.x;
 
-        for rv in &random_vectors {
-            let pcg_rv = pcg.solve(sigma_vec, precond, rv, None);
-            let sigma_inv_rv = pcg_rv.x;
+                // trace(Sigma^{-1} * dSigma/d(tau_e)) where dSigma/d(tau_e) = diag(1/W)
+                let inv_w_rv: Vec<f64> = rv
+                    .iter()
+                    .zip(w.iter())
+                    .map(|(r, w)| r / w.max(1e-30))
+                    .collect();
+                let tw = DenseMatrix::dot(&sigma_inv_rv, &inv_w_rv);
 
-            // trace(Sigma^{-1} * dSigma/d(tau_e)) where dSigma/d(tau_e) = diag(1/W)
-            let inv_w_rv: Vec<f64> = rv.iter().zip(w.iter()).map(|(r, w)| r / w.max(1e-30)).collect();
-            trace_w += DenseMatrix::dot(&sigma_inv_rv, &inv_w_rv);
+                // trace(Sigma^{-1} GRM) contribution
+                let grm_rv = grm_vec_product(rv);
+                let tg = DenseMatrix::dot(&sigma_inv_rv, &grm_rv);
 
-            // trace(Sigma^{-1} GRM) contribution
-            let grm_rv = grm_vec_product(rv);
-            trace_grm += DenseMatrix::dot(&sigma_inv_rv, &grm_rv);
-        }
+                (tw, tg)
+            })
+            .reduce(|| (0.0, 0.0), |(a0, a1), (b0, b1)| (a0 + b0, a1 + b1));
 
-        trace_w /= config.n_random_vectors as f64;
-        trace_grm /= config.n_random_vectors as f64;
+        let trace_w = trace_w / config.n_random_vectors as f64;
+        let trace_grm = trace_grm / config.n_random_vectors as f64;
 
         // Project out X: P = Sigma^{-1} - Sigma^{-1}X(X'Sigma^{-1}X)^{-1}X'Sigma^{-1}
         // For score: S = y' P * y
@@ -220,7 +237,11 @@ where
         // AI[i][j] = 0.5 * y' P * dSigma_i * P * dSigma_j * P * y
         // dSigma/d(tau_e) = diag(1/W), dSigma/d(tau_g) = GRM
         let p_y = sigma_inv_y.clone(); // approximate
-        let inv_w_p_y: Vec<f64> = p_y.iter().zip(w.iter()).map(|(pi, wi)| pi / wi.max(1e-30)).collect();
+        let inv_w_p_y: Vec<f64> = p_y
+            .iter()
+            .zip(w.iter())
+            .map(|(pi, wi)| pi / wi.max(1e-30))
+            .collect();
         let grm_p_y = grm_vec_product(&p_y);
 
         let pcg_inv_w_py = pcg.solve(sigma_vec, precond, &inv_w_p_y, None);
@@ -240,10 +261,7 @@ where
         let delta_0 = (ai_11 * score[0] - ai_01 * score[1]) / ai_det;
         let delta_1 = (-ai_01 * score[0] + ai_00 * score[1]) / ai_det;
 
-        let tau_new = [
-            (tau[0] + delta_0).max(1e-10),
-            (tau[1] + delta_1).max(1e-10),
-        ];
+        let tau_new = [(tau[0] + delta_0).max(1e-10), (tau[1] + delta_1).max(1e-10)];
 
         // Check convergence
         let change_0 = (tau_new[0] - tau[0]).abs() / (tau_new[0].abs() + tau[0].abs() + config.tol);
@@ -264,7 +282,10 @@ where
     }
 
     if !converged {
-        warn!("AI-REML did not converge after {} iterations", config.max_iter);
+        warn!(
+            "AI-REML did not converge after {} iterations",
+            config.max_iter
+        );
     }
 
     let w = family.working_weights(&mu);
@@ -305,12 +326,7 @@ where
 
 /// Fit a GLM using IRLS (Iteratively Reweighted Least Squares).
 /// Used for initialization before AI-REML.
-fn fit_glm_irls(
-    y: &[f64],
-    x: &DenseMatrix,
-    family: &Family,
-    max_iter: usize,
-) -> Result<Vec<f64>> {
+fn fit_glm_irls(y: &[f64], x: &DenseMatrix, family: &Family, max_iter: usize) -> Result<Vec<f64>> {
     let _n = y.len();
     let p = x.ncols();
 
@@ -367,12 +383,7 @@ fn fit_glm_irls(
 ///
 /// For each column x_j of X, solve Sigma * z_j = x_j via PCG,
 /// then (X' Sigma^{-1} X)_{j,k} = x_j' * z_k = x_j' * Sigma^{-1} * x_k.
-fn compute_xt_a_x<F, P>(
-    x: &DenseMatrix,
-    sigma_vec: &F,
-    pcg: &PcgSolver,
-    precond: &P,
-) -> DenseMatrix
+fn compute_xt_a_x<F, P>(x: &DenseMatrix, sigma_vec: &F, pcg: &PcgSolver, precond: &P) -> DenseMatrix
 where
     F: Fn(&[f64]) -> Vec<f64>,
     P: Fn(&[f64]) -> Vec<f64>,
@@ -437,8 +448,8 @@ mod tests {
         let mut y = Vec::with_capacity(n);
         let mut x_data = vec![0.0; n * 2];
 
-        use rand::SeedableRng;
         use rand::Rng;
+        use rand::SeedableRng;
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
         for i in 0..n {
@@ -494,10 +505,22 @@ mod tests {
 
         // iterations should be > 0 and <= max_iter
         assert!(result.iterations > 0, "iterations={}", result.iterations);
-        assert!(result.iterations <= config.max_iter, "iterations={}", result.iterations);
+        assert!(
+            result.iterations <= config.max_iter,
+            "iterations={}",
+            result.iterations
+        );
 
         // log-likelihood should be finite and negative (Gaussian)
-        assert!(result.log_likelihood.is_finite(), "loglik={}", result.log_likelihood);
-        assert!(result.log_likelihood < 0.0, "loglik should be negative: {}", result.log_likelihood);
+        assert!(
+            result.log_likelihood.is_finite(),
+            "loglik={}",
+            result.log_likelihood
+        );
+        assert!(
+            result.log_likelihood < 0.0,
+            "loglik should be negative: {}",
+            result.log_likelihood
+        );
     }
 }

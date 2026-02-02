@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 /// Parsed phenotype data for all samples.
 #[derive(Debug, Clone)]
@@ -55,7 +55,9 @@ pub fn parse_phenotype_file(
     let id_idx = headers
         .iter()
         .position(|&h| h == sample_id_col)
-        .ok_or_else(|| anyhow::anyhow!("Sample ID column '{}' not found in header", sample_id_col))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Sample ID column '{}' not found in header", sample_id_col)
+        })?;
 
     let pheno_idx = headers
         .iter()
@@ -195,13 +197,9 @@ mod tests {
         writeln!(f, "S2\t0\t50\t2").unwrap();
         writeln!(f, "S3\tNA\t55\t1").unwrap();
 
-        let result = parse_phenotype_file(
-            &path,
-            "y",
-            &["age".to_string(), "sex".to_string()],
-            "IID",
-        )
-        .unwrap();
+        let result =
+            parse_phenotype_file(&path, "y", &["age".to_string(), "sex".to_string()], "IID")
+                .unwrap();
 
         assert_eq!(result.sample_ids, vec!["S1", "S2", "S3"]);
         assert_eq!(result.phenotype[0], 1.0);

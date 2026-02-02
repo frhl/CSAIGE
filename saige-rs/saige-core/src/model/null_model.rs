@@ -7,7 +7,7 @@
 //! - Variance ratios
 //! - Optional sparse GRM and LOCO results
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::glmm::link::TraitType;
 use crate::glmm::variance_ratio::VarianceRatioResult;
@@ -81,9 +81,7 @@ impl NullModel {
     ) -> Self {
         let n = sample_ids.len();
         let mu2 = match trait_type {
-            TraitType::Binary | TraitType::Survival => {
-                mu.iter().map(|&m| m * (1.0 - m)).collect()
-            }
+            TraitType::Binary | TraitType::Survival => mu.iter().map(|&m| m * (1.0 - m)).collect(),
             TraitType::Quantitative => vec![1.0; n],
         };
         let residuals: Vec<f64> = y.iter().zip(mu.iter()).map(|(&yi, &mi)| yi - mi).collect();

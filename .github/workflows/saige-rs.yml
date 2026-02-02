@@ -1,0 +1,80 @@
+name: saige-rs CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "saige-rs/**"
+      - ".github/workflows/saige-rs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "saige-rs/**"
+      - ".github/workflows/saige-rs.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+defaults:
+  run:
+    working-directory: saige-rs
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: saige-rs
+      - run: cargo clippy --all-targets --all-features
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: saige-rs
+      - name: Run unit and property tests
+        run: cargo test --workspace
+      - name: Run tests in release mode
+        run: cargo test --workspace --release
+
+  build-release:
+    name: Build release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: saige-rs
+      - run: cargo build --release -p saige-cli
+      - name: Smoke test CLI
+        run: cargo run --release -p saige-cli -- --help

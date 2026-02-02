@@ -204,13 +204,8 @@ mod tests {
 
     #[test]
     fn test_mat_vec() {
-        let m = SparseMatrix::from_triplets(
-            3,
-            3,
-            &[0, 1, 2, 0],
-            &[0, 1, 2, 2],
-            &[1.0, 2.0, 3.0, 0.5],
-        );
+        let m =
+            SparseMatrix::from_triplets(3, 3, &[0, 1, 2, 0], &[0, 1, 2, 2], &[1.0, 2.0, 3.0, 0.5]);
         let v = vec![1.0, 1.0, 1.0];
         let result = m.mat_vec(&v);
         assert!((result[0] - 1.5).abs() < 1e-10);
@@ -243,13 +238,7 @@ mod tests {
 
     #[test]
     fn test_diag() {
-        let m = SparseMatrix::from_triplets(
-            3,
-            3,
-            &[0, 1, 2],
-            &[0, 1, 2],
-            &[2.0, 4.0, 6.0],
-        );
+        let m = SparseMatrix::from_triplets(3, 3, &[0, 1, 2], &[0, 1, 2], &[2.0, 4.0, 6.0]);
         let d = m.diag();
         assert_eq!(d, vec![2.0, 4.0, 6.0]);
     }

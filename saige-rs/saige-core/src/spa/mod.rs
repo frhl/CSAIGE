@@ -5,5 +5,5 @@
 //! when the trait is binary or survival.
 
 pub mod binary;
-pub mod survival;
 pub mod fast;
+pub mod survival;

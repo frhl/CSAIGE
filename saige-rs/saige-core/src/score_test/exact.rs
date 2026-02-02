@@ -61,8 +61,7 @@ pub fn exact_test_hypergeometric(
 
 /// Hypergeometric PMF: P(X = k | N, K, n)
 fn hypergeom_pmf(k: usize, n_total: usize, n_success: usize, n_draws: usize) -> f64 {
-    let log_p = ln_choose(n_success, k)
-        + ln_choose(n_total - n_success, n_draws - k)
+    let log_p = ln_choose(n_success, k) + ln_choose(n_total - n_success, n_draws - k)
         - ln_choose(n_total, n_draws);
     log_p.exp()
 }
