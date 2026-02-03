@@ -143,25 +143,30 @@ impl ScoreTestEngine {
             .map(|(gi, xi)| gi - xi)
             .collect();
 
-        // Score statistic: S = g_tilde' * residuals
-        let score: f64 = g_tilde
+        // Score statistic: S = g_tilde' * residuals / tau_e
+        // Matches R SAIGE: S = dot(t_gtilde, m_res) / m_tauvec[0]
+        let score_raw: f64 = g_tilde
             .iter()
             .zip(self.residuals.iter())
             .map(|(gi, ri)| gi * ri)
             .sum();
+        let score = score_raw / self.tau_e;
 
         // Select variance ratio
         let vr = select_variance_ratio(mac, self.variance_ratio, &self.categorical_vr);
 
-        // Variance: var_t = g_tilde' * diag(mu2) * g_tilde
+        // Variance: var_t = g_tilde' * diag(mu2 * tau_e) * g_tilde
+        // Matches R SAIGE: t_P2Vec = t_gtilde % m_mu2 * m_tauvec[0]; var2 = dot(t_P2Vec, t_gtilde)
         let var_t: f64 = g_tilde
             .iter()
             .zip(self.mu2.iter())
             .map(|(gi, mi)| gi * gi * mi)
-            .sum();
+            .sum::<f64>()
+            * self.tau_e;
 
-        // Adjusted variance: var_t_star = var_t / vr
-        let var_t_star = var_t / vr;
+        // Adjusted variance: var_t_star = var_t * vr
+        // Matches R SAIGE: var1 = var2 * m_varRatioVal
+        let var_t_star = var_t * vr;
 
         // Test statistic: T = S^2 / var_t_star
         let tstat = if var_t_star > 1e-30 {
@@ -179,21 +184,37 @@ impl ScoreTestEngine {
             && self.trait_type == TraitType::Binary
             && pvalue_noadj < self.spa_pval_cutoff
         {
-            let q = score;
+            // SPA q-value: q = S / sqrt(vr) + m1
+            // Matches R SAIGE: q = t_Tstat / sqrt(t_var1/t_var2) + m1
+            let m1: f64 = self
+                .mu
+                .iter()
+                .zip(g_tilde.iter())
+                .map(|(mi, gi)| mi * gi)
+                .sum();
+            let q = score / vr.sqrt() + m1;
+            // Mirror q around m1 for two-sided test
+            let qinv = 2.0 * m1 - q;
+
             let spa_result = if self.use_fast_spa {
-                spa_binary_fast(&self.mu, &g_tilde, q, pvalue_noadj, self.spa_tol)
+                spa_binary_fast(&self.mu, &g_tilde, q, qinv, pvalue_noadj, self.spa_tol)
             } else {
-                spa_binary(&self.mu, &g_tilde, q, pvalue_noadj, self.spa_tol)
+                spa_binary(&self.mu, &g_tilde, q, qinv, pvalue_noadj, self.spa_tol)
             };
             (spa_result.pvalue, spa_result.is_spa, spa_result.converged)
         } else {
             (pvalue_noadj, false, true)
         };
 
-        // Beta and SE: BETA = S / var_t, SE = sqrt(var_t_star) / var_t
-        let beta = if var_t > 1e-30 { score / var_t } else { 0.0 };
-        let se_beta = if var_t > 1e-30 {
-            (var_t_star).sqrt() / var_t
+        // Beta = S / var1, SE = |Beta| / sqrt(|stat|) = 1/sqrt(var1)
+        // Matches R SAIGE: t_Beta = S/var1; t_seBeta = fabs(t_Beta) / sqrt(fabs(stat))
+        let beta = if var_t_star > 1e-30 {
+            score / var_t_star
+        } else {
+            0.0
+        };
+        let se_beta = if var_t_star > 1e-30 {
+            1.0 / var_t_star.sqrt()
         } else {
             f64::INFINITY
         };

@@ -107,7 +107,10 @@ proptest! {
             .map(|(&gi, &mi)| gi * (if rng.gen::<f64>() < mi { 1.0 } else { 0.0 } - mi))
             .sum();
 
-        let result = spa_binary(&mu, &g, q, 0.5, 1e-5);
+        let m1: f64 = mu.iter().zip(g.iter()).map(|(m, gi)| m * gi).sum();
+        let q_spa = q + m1;
+        let qinv = 2.0 * m1 - q_spa;
+        let result = spa_binary(&mu, &g, q_spa, qinv, 0.5, 1e-5);
 
         prop_assert!(result.pvalue >= 0.0, "SPA p-value < 0: {}", result.pvalue);
         prop_assert!(result.pvalue <= 1.0, "SPA p-value > 1: {}", result.pvalue);

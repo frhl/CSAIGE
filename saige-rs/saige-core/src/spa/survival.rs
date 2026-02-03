@@ -29,12 +29,13 @@ pub fn spa_survival(
     mu: &[f64],
     g: &[f64],
     q: f64,
+    qinv: f64,
     pval_noadj: f64,
     tol: f64,
 ) -> super::binary::SpaResult {
     // The survival SPA uses the same algorithm as binary SPA
     // with the survival-specific mu values from the cloglog link
-    super::binary::spa_binary(mu, g, q, pval_noadj, tol)
+    super::binary::spa_binary(mu, g, q, qinv, pval_noadj, tol)
 }
 
 #[cfg(test)]
@@ -46,7 +47,9 @@ mod tests {
         let mu = vec![0.1, 0.2, 0.3, 0.15, 0.25];
         let g = vec![0.0, 1.0, 2.0, 0.0, 1.0];
         let q = 0.5;
-        let result = spa_survival(&mu, &g, q, 0.1, 1e-6);
+        let m1: f64 = mu.iter().zip(g.iter()).map(|(m, gi)| m * gi).sum();
+        let qinv = 2.0 * m1 - q;
+        let result = spa_survival(&mu, &g, q, qinv, 0.1, 1e-6);
         assert!(result.pvalue >= 0.0);
     }
 }

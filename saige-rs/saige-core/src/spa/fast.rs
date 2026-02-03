@@ -208,10 +208,10 @@ pub fn spa_binary_fast(
     mu: &[f64],
     g: &[f64],
     q: f64,
+    qinv: f64,
     pval_noadj: f64,
     tol: f64,
 ) -> super::binary::SpaResult {
-    let qinv = -q;
     let (g_nb, mu_nb, na_mu, na_sigma) = partition_for_fast_spa(g, mu);
 
     let root1 = find_root_k1_fast(0.0, &mu_nb, &g_nb, g, q, na_mu, na_sigma, tol, 1000);
@@ -269,8 +269,10 @@ mod tests {
             .sum::<f64>()
             * 0.3;
 
-        let standard = super::super::binary::spa_binary(&mu, &g, q, 0.5, 1e-6);
-        let fast = spa_binary_fast(&mu, &g, q, 0.5, 1e-6);
+        let m1: f64 = mu.iter().zip(g.iter()).map(|(m, gi)| m * gi).sum();
+        let qinv = 2.0 * m1 - q;
+        let standard = super::super::binary::spa_binary(&mu, &g, q, qinv, 0.5, 1e-6);
+        let fast = spa_binary_fast(&mu, &g, q, qinv, 0.5, 1e-6);
 
         // Both should produce valid p-values
         assert!(standard.pvalue >= 0.0);

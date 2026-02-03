@@ -75,7 +75,7 @@ R wall times include Docker/Rosetta 2 overhead. Native Linux R would be faster, 
 
 #### P-value concordance
 
-Both implementations produce correlated p-values (Pearson *r* = 0.72 on −log₁₀ scale, *r* = 0.98 on raw scale) across 70 tested variants with SPA correction enabled.
+Both implementations produce correlated p-values (Pearson *r* = 0.75 on −log₁₀ scale, *r* = 0.98 on raw scale) across 70 tested variants with SPA correction enabled. Remaining differences are due to numerical variation in AI-REML convergence (tau_g and variance ratio estimates).
 
 <p align="center">
   <img src="saige-rs/docs/pvalue_comparison.png" width="480" alt="P-value comparison between SAIGE R and saige-rs" />

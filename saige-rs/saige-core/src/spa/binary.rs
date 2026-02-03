@@ -186,12 +186,19 @@ pub fn saddle_probability(zeta: f64, mu: &[f64], g: &[f64], q: f64, log_p: bool)
 ///
 /// # Arguments
 /// - `mu`: Fitted probabilities from null model
-/// - `g`: Genotype dosage vector (centered or raw)
-/// - `q`: Score statistic (g' * (y - mu))
+/// - `g`: Genotype dosage vector (g_tilde, projected)
+/// - `q`: Observed score sum = S/sqrt(vr) + m1, where m1 = dot(mu, g)
+/// - `qinv`: Mirror of q around m1 = 2*m1 - q
 /// - `pval_noadj`: P-value from normal approximation (fallback)
 /// - `tol`: Root finding tolerance (default: 1e-5)
-pub fn spa_binary(mu: &[f64], g: &[f64], q: f64, pval_noadj: f64, tol: f64) -> SpaResult {
-    let qinv = -q;
+pub fn spa_binary(
+    mu: &[f64],
+    g: &[f64],
+    q: f64,
+    qinv: f64,
+    pval_noadj: f64,
+    tol: f64,
+) -> SpaResult {
     let log_p = false;
 
     let root1 = find_root_k1(0.0, mu, g, q, tol, 1000);
@@ -283,7 +290,9 @@ mod tests {
             .sum::<f64>()
             * 0.5;
 
-        let result = spa_binary(&mu, &g, q, 0.05, 1e-6);
+        let m1: f64 = mu.iter().zip(g.iter()).map(|(m, gi)| m * gi).sum();
+        let qinv = 2.0 * m1 - q;
+        let result = spa_binary(&mu, &g, q, qinv, 0.05, 1e-6);
         assert!(result.pvalue >= 0.0 && result.pvalue <= 1.0);
     }
 
