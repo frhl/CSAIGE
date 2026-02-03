@@ -40,7 +40,7 @@ impl Default for AiRemlConfig {
     fn default() -> Self {
         Self {
             max_iter: 30,
-            tol: 1e-5,
+            tol: 0.02,
             pcg_tol: 1e-5,
             pcg_max_iter: 500,
             n_random_vectors: 30,
@@ -103,8 +103,8 @@ where
     // Only tau_g (genetic variance) is estimated. This matches R SAIGE.
     let fix_tau_e = matches!(trait_type, TraitType::Binary | TraitType::Survival);
 
-    // Initialize
-    let mut tau = [1.0, 1.0]; // [tau_e, tau_g]
+    // Initialize: tau_e=1 (fixed for binary), tau_g=0 (estimated from zero, matching R SAIGE)
+    let mut tau = [1.0, 0.0];
 
     // Initial GLM fit (logistic regression without random effects)
     let mut alpha = fit_glm_irls(y, x, &family, 25)?;
@@ -263,7 +263,14 @@ where
                 break;
             }
             let delta_1 = score[1] / ai_11;
-            let tau_g_new = (tau[1] + delta_1).max(1e-10);
+            // Step halving: if tau_g would go negative, halve step until non-negative
+            let mut step = 1.0;
+            let mut tau_g_new = tau[1] + step * delta_1;
+            while tau_g_new < 0.0 && step > 1e-10 {
+                step *= 0.5;
+                tau_g_new = tau[1] + step * delta_1;
+            }
+            tau_g_new = tau_g_new.max(1e-10);
             let change_1 =
                 (tau_g_new - tau[1]).abs() / (tau_g_new.abs() + tau[1].abs() + config.tol);
             ([1.0, tau_g_new], change_1)
@@ -276,7 +283,16 @@ where
             }
             let delta_0 = (ai_11 * score[0] - ai_01 * score[1]) / ai_det;
             let delta_1 = (-ai_01 * score[0] + ai_00 * score[1]) / ai_det;
-            let t = [(tau[0] + delta_0).max(1e-10), (tau[1] + delta_1).max(1e-10)];
+            // Step halving: if either tau would go negative, halve step
+            let mut step = 1.0;
+            let mut t0 = tau[0] + step * delta_0;
+            let mut t1 = tau[1] + step * delta_1;
+            while (t0 < 0.0 || t1 < 0.0) && step > 1e-10 {
+                step *= 0.5;
+                t0 = tau[0] + step * delta_0;
+                t1 = tau[1] + step * delta_1;
+            }
+            let t = [t0.max(1e-10), t1.max(1e-10)];
             let change_0 = (t[0] - tau[0]).abs() / (t[0].abs() + tau[0].abs() + config.tol);
             let change_1 = (t[1] - tau[1]).abs() / (t[1].abs() + tau[1].abs() + config.tol);
             (t, change_0.max(change_1))
