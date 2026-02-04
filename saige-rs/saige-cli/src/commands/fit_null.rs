@@ -87,6 +87,10 @@ pub struct FitNullArgs {
     #[arg(long, default_value = "0.01")]
     min_maf: f64,
 
+    /// Maximum missing rate for GRM markers
+    #[arg(long, default_value = "0.15")]
+    max_missing_rate: f64,
+
     /// Whether to use categorical variance ratios
     #[arg(long, default_value = "false")]
     use_categorical_vr: bool,
@@ -193,9 +197,14 @@ pub fn run(args: FitNullArgs) -> Result<()> {
     let mut vr_dosages = Vec::new();
     let mut vr_macs = Vec::new();
 
+    let n_samples_valid = valid_ids.len();
     for m in 0..n_markers {
         let data = plink.read_marker(m as u64)?;
-        if data.af >= args.min_maf && data.af <= 1.0 - args.min_maf {
+        let missing_rate = 1.0 - (data.n_valid as f64 / n_samples_valid as f64);
+        if data.af >= args.min_maf
+            && data.af <= 1.0 - args.min_maf
+            && missing_rate <= args.max_missing_rate
+        {
             grm_dosages.push(data.dosages.clone());
             grm_afs.push(data.af);
         }
@@ -206,9 +215,10 @@ pub fn run(args: FitNullArgs) -> Result<()> {
         }
     }
     info!(
-        "Using {} markers for GRM (MAF >= {})",
+        "Using {} markers for GRM (MAF >= {}, missing <= {})",
         grm_dosages.len(),
-        args.min_maf
+        args.min_maf,
+        args.max_missing_rate,
     );
     info!(
         "Available markers for VR estimation: {} (MAC >= 20)",

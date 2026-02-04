@@ -178,82 +178,152 @@ where
         }
         let sigma_inv_y = pcg_result.x;
 
-        // Update fixed effects: alpha = (X' Sigma^{-1} X)^{-1} X' Sigma^{-1} y_tilde
-        let xt_sigma_inv_x = compute_xt_a_x(x, &sigma_vec, &pcg, &precond);
-        let xt_sigma_inv_y: Vec<f64> = (0..p)
+        // Solve Sigma^{-1} * X columns (needed for P-projection)
+        let sigma_inv_x: Vec<Vec<f64>> = (0..p)
             .map(|j| {
-                let col = x.col(j);
-                DenseMatrix::dot(&col, &sigma_inv_y)
+                let col_j = x.col(j);
+                pcg.solve(&sigma_vec, &precond, &col_j, None).x
             })
             .collect();
 
-        // Solve the p x p system
-        if let Ok(chol) = saige_linalg::decomposition::CholeskyDecomp::new(&xt_sigma_inv_x) {
-            alpha = chol.solve(&xt_sigma_inv_y);
+        // X' Sigma^{-1} X
+        let mut xt_sigma_inv_x = DenseMatrix::zeros(p, p);
+        #[allow(clippy::needless_range_loop)]
+        for j in 0..p {
+            for k in j..p {
+                let dot = DenseMatrix::dot(&x.col(k), &sigma_inv_x[j]);
+                xt_sigma_inv_x.set(j, k, dot);
+                if j != k {
+                    xt_sigma_inv_x.set(k, j, dot);
+                }
+            }
         }
+
+        // Solve alpha = (X'Σ⁻¹X)⁻¹ X'Σ⁻¹y
+        let xt_sigma_inv_y: Vec<f64> = (0..p)
+            .map(|j| DenseMatrix::dot(&x.col(j), &sigma_inv_y))
+            .collect();
+
+        let chol = match saige_linalg::decomposition::CholeskyDecomp::new(&xt_sigma_inv_x) {
+            Ok(c) => c,
+            Err(_) => {
+                warn!("Cholesky failed at iteration {}", iter);
+                break;
+            }
+        };
+        alpha = chol.solve(&xt_sigma_inv_y);
 
         // Update eta and mu
         eta = x.mat_vec(&alpha);
         mu = family.update_mu(&eta);
 
-        // Compute REML score for tau
-        // score[0] = -0.5 * (trace(Sigma^{-1} * W) - y'P*y) (simplified)
-        // score[1] = -0.5 * (trace(Sigma^{-1} * GRM) - y'P*GRM*P*y) (simplified)
+        // P*y = Σ⁻¹y - Σ⁻¹X * (X'Σ⁻¹X)⁻¹ * X'Σ⁻¹y  =  Σ⁻¹y - Σ⁻¹X * alpha
+        let mut p_y = sigma_inv_y;
+        for j in 0..p {
+            for i in 0..n {
+                p_y[i] -= sigma_inv_x[j][i] * alpha[j];
+            }
+        }
 
-        // Trace estimation using random vectors (parallelized with rayon).
-        // Each random vector is independent: solve Sigma^{-1} * rv via PCG,
-        // then compute trace contributions for both W and GRM derivatives.
-        let (trace_w, trace_grm) = random_vectors
-            .par_iter()
-            .map(|rv| {
-                let pcg_rv = pcg.solve(sigma_vec, precond, rv, None);
-                let sigma_inv_rv = pcg_rv.x;
-
-                // trace(Sigma^{-1} * dSigma/d(tau_e)) where dSigma/d(tau_e) = diag(1/W)
-                let inv_w_rv: Vec<f64> = rv
-                    .iter()
-                    .zip(w.iter())
-                    .map(|(r, w)| r / w.max(1e-30))
-                    .collect();
-                let tw = DenseMatrix::dot(&sigma_inv_rv, &inv_w_rv);
-
-                // trace(Sigma^{-1} GRM) contribution
-                let grm_rv = grm_vec_product(rv);
-                let tg = DenseMatrix::dot(&sigma_inv_rv, &grm_rv);
-
-                (tw, tg)
-            })
-            .reduce(|| (0.0, 0.0), |(a0, a1), (b0, b1)| (a0 + b0, a1 + b1));
-
-        let trace_w = trace_w / config.n_random_vectors as f64;
-        let trace_grm = trace_grm / config.n_random_vectors as f64;
-
-        // Project out X: P = Sigma^{-1} - Sigma^{-1}X(X'Sigma^{-1}X)^{-1}X'Sigma^{-1}
-        // For score: S = y' P * y
-        let residuals_new = family.residuals(y, &mu);
-        let score_e = DenseMatrix::dot(&residuals_new, &sigma_inv_y) - trace_w;
-        let grm_sigma_inv_y = grm_vec_product(&sigma_inv_y);
-        let score_g = DenseMatrix::dot(&sigma_inv_y, &grm_sigma_inv_y) - trace_grm;
-
-        let score = [0.5 * score_e, 0.5 * score_g];
-
-        // AI matrix (Average Information)
-        // AI[i][j] = 0.5 * y' P * dSigma_i * P * dSigma_j * P * y
-        // dSigma/d(tau_e) = diag(1/W), dSigma/d(tau_g) = GRM
-        let p_y = sigma_inv_y.clone(); // approximate
-        let inv_w_p_y: Vec<f64> = p_y
-            .iter()
-            .zip(w.iter())
-            .map(|(pi, wi)| pi / wi.max(1e-30))
-            .collect();
+        // GRM * P*y
         let grm_p_y = grm_vec_product(&p_y);
 
-        let pcg_inv_w_py = pcg.solve(sigma_vec, precond, &inv_w_p_y, None);
-        let pcg_grm_py = pcg.solve(sigma_vec, precond, &grm_p_y, None);
+        // Score: YPAPY = (P*y)' * GRM * (P*y)
+        let ypapy = DenseMatrix::dot(&p_y, &grm_p_y);
 
-        let ai_00 = 0.5 * DenseMatrix::dot(&inv_w_p_y, &pcg_inv_w_py.x);
-        let ai_01 = 0.5 * DenseMatrix::dot(&inv_w_p_y, &pcg_grm_py.x);
-        let ai_11 = 0.5 * DenseMatrix::dot(&grm_p_y, &pcg_grm_py.x);
+        // P-projected trace estimation: trace(P * GRM)
+        // Hutchinson: E[u' * GRM * P * u] = trace(GRM * P)
+        // P*u = Σ⁻¹*u - Σ⁻¹X * (X'Σ⁻¹X)⁻¹ * (Σ⁻¹X)' * u
+        let trace_grm: f64 = random_vectors
+            .par_iter()
+            .map(|rv| {
+                let sigma_inv_rv = pcg.solve(&sigma_vec, &precond, rv, None).x;
+
+                // P*u = Σ⁻¹u - Σ⁻¹X * (X'Σ⁻¹X)⁻¹ * (Σ⁻¹X)' * u
+                let sigma_ix_t_u: Vec<f64> =
+                    (0..p).map(|j| DenseMatrix::dot(&sigma_inv_x[j], rv)).collect();
+                let correction = chol.solve(&sigma_ix_t_u);
+                let mut p_u = sigma_inv_rv;
+                for j in 0..p {
+                    for i in 0..n {
+                        p_u[i] -= sigma_inv_x[j][i] * correction[j];
+                    }
+                }
+
+                // GRM * u
+                let grm_rv = grm_vec_product(rv);
+                DenseMatrix::dot(&grm_rv, &p_u)
+            })
+            .sum::<f64>()
+            / config.n_random_vectors as f64;
+
+        let score_g = ypapy - trace_grm;
+
+        // AI: (GRM*P*y)' * P * (GRM*P*y) — full P-projection in AI
+        let sigma_inv_grm_py = pcg.solve(&sigma_vec, &precond, &grm_p_y, None).x;
+        let sigma_ix_t_grm_py: Vec<f64> =
+            (0..p).map(|j| DenseMatrix::dot(&sigma_inv_x[j], &grm_p_y)).collect();
+        let correction_grm = chol.solve(&sigma_ix_t_grm_py);
+        let mut p_grm_py = sigma_inv_grm_py;
+        for j in 0..p {
+            for i in 0..n {
+                p_grm_py[i] -= sigma_inv_x[j][i] * correction_grm[j];
+            }
+        }
+        let ai_11 = DenseMatrix::dot(&grm_p_y, &p_grm_py);
+
+        // For quantitative traits, also need score_e and full AI matrix
+        let score_e;
+        let ai_00;
+        let ai_01;
+        if !fix_tau_e {
+            // trace(P * diag(1/W))
+            let trace_w: f64 = random_vectors
+                .par_iter()
+                .map(|rv| {
+                    let sigma_inv_rv = pcg.solve(&sigma_vec, &precond, rv, None).x;
+                    let sigma_ix_t_u: Vec<f64> =
+                        (0..p).map(|j| DenseMatrix::dot(&sigma_inv_x[j], rv)).collect();
+                    let correction = chol.solve(&sigma_ix_t_u);
+                    let mut p_u = sigma_inv_rv;
+                    for j in 0..p {
+                        for i in 0..n {
+                            p_u[i] -= sigma_inv_x[j][i] * correction[j];
+                        }
+                    }
+                    let inv_w_rv: Vec<f64> =
+                        rv.iter().zip(w.iter()).map(|(r, w)| r / w.max(1e-30)).collect();
+                    DenseMatrix::dot(&inv_w_rv, &p_u)
+                })
+                .sum::<f64>()
+                / config.n_random_vectors as f64;
+
+            let inv_w_p_y: Vec<f64> = p_y.iter().zip(w.iter()).map(|(pi, wi)| pi / wi.max(1e-30)).collect();
+            let ypa0py = DenseMatrix::dot(&p_y, &inv_w_p_y);
+            score_e = ypa0py - trace_w;
+
+            // AI entries for diag(1/W) component
+            let sigma_inv_inv_w_py = pcg.solve(&sigma_vec, &precond, &inv_w_p_y, None).x;
+            let sigma_ix_t_inv_w_py: Vec<f64> =
+                (0..p).map(|j| DenseMatrix::dot(&sigma_inv_x[j], &inv_w_p_y)).collect();
+            let correction_inv_w = chol.solve(&sigma_ix_t_inv_w_py);
+            let mut p_inv_w_py = sigma_inv_inv_w_py;
+            for j in 0..p {
+                for i in 0..n {
+                    p_inv_w_py[i] -= sigma_inv_x[j][i] * correction_inv_w[j];
+                }
+            }
+            ai_00 = DenseMatrix::dot(&inv_w_p_y, &p_inv_w_py);
+            ai_01 = DenseMatrix::dot(&inv_w_p_y, &p_grm_py);
+        } else {
+            score_e = 0.0;
+            ai_00 = 0.0;
+            ai_01 = 0.0;
+        }
+
+        // R SAIGE convention: score and AI both omit the 0.5 REML factor,
+        // so delta = score / AI = (YPAPY - Trace) / ((APy)'P(APy)) is correct.
+        let score = [score_e, score_g];
 
         // Update tau: tau_new = tau_old + AI^{-1} * score
         let (tau_new, max_change) = if fix_tau_e {
@@ -409,42 +479,6 @@ fn fit_glm_irls(y: &[f64], x: &DenseMatrix, family: &Family, max_iter: usize) ->
     }
 
     Ok(alpha)
-}
-
-/// Compute X' Sigma^{-1} X where Sigma is defined by sigma_vec.
-///
-/// For each column x_j of X, solve Sigma * z_j = x_j via PCG,
-/// then (X' Sigma^{-1} X)_{j,k} = x_j' * z_k = x_j' * Sigma^{-1} * x_k.
-fn compute_xt_a_x<F, P>(x: &DenseMatrix, sigma_vec: &F, pcg: &PcgSolver, precond: &P) -> DenseMatrix
-where
-    F: Fn(&[f64]) -> Vec<f64>,
-    P: Fn(&[f64]) -> Vec<f64>,
-{
-    let p = x.ncols();
-
-    // Solve Sigma * z_j = x_j for each column j
-    let sigma_inv_cols: Vec<Vec<f64>> = (0..p)
-        .map(|j| {
-            let col_j = x.col(j);
-            let pcg_result = pcg.solve(sigma_vec, precond, &col_j, None);
-            pcg_result.x
-        })
-        .collect();
-
-    // Now compute (X' Sigma^{-1} X)_{j,k} = x_k' * sigma_inv_cols[j]
-    let mut result = DenseMatrix::zeros(p, p);
-    #[allow(clippy::needless_range_loop)]
-    for j in 0..p {
-        for k in j..p {
-            let col_k = x.col(k);
-            let dot = DenseMatrix::dot(&col_k, &sigma_inv_cols[j]);
-            result.set(j, k, dot);
-            if j != k {
-                result.set(k, j, dot);
-            }
-        }
-    }
-    result
 }
 
 #[cfg(test)]

@@ -497,7 +497,9 @@ proptest! {
 
         for i in 0..n {
             let diff = (result_explicit[i] - result_otf[i]).abs();
-            prop_assert!(diff < 1e-10,
+            // OnTheFlyGrm uses f32 internally (matching R SAIGE's float32 precision),
+            // so tolerance must account for f32 rounding (~1e-6 relative).
+            prop_assert!(diff < 1e-5,
                 "GRM*v mismatch at [{}]: explicit={}, on-the-fly={} (diff={})",
                 i, result_explicit[i], result_otf[i], diff);
         }

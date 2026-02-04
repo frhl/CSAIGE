@@ -84,10 +84,14 @@ where
 /// GRM * v = (1/M) * sum_m (g_m - 2*p_m) * ((g_m - 2*p_m)' * v) / (2*p_m*(1-p_m))
 ///
 /// This avoids storing the N x N GRM matrix.
+///
+/// Uses f32 internally to match R SAIGE's `arma::fvec`/`arma::fmat` precision.
+/// R SAIGE performs ALL GRM operations in float32, so using f32 here produces
+/// GRM products that match R's results, leading to closer tau_g estimates.
 pub struct OnTheFlyGrm {
-    /// Standardized genotype matrix: each column is (g_m - 2*p_m) / sqrt(2*p_m*(1-p_m))
+    /// Standardized genotype matrix in f32: each column is (g_m - 2*p_m) / sqrt(2*p_m*(1-p_m))
     /// stored as columns in a flat array (n_samples * n_markers).
-    std_genotypes: Vec<f64>,
+    std_genotypes: Vec<f32>,
     n_samples: usize,
     n_markers: usize,
 }
@@ -97,7 +101,7 @@ impl OnTheFlyGrm {
     pub fn new(dosages: &[Vec<f64>], allele_freqs: &[f64]) -> Self {
         let n_markers = dosages.len();
         let n_samples = if n_markers > 0 { dosages[0].len() } else { 0 };
-        let mut std_genotypes = vec![0.0; n_samples * n_markers];
+        let mut std_genotypes = vec![0.0f32; n_samples * n_markers];
 
         for (m, (geno, &af)) in dosages.iter().zip(allele_freqs.iter()).enumerate() {
             let denom = (2.0 * af * (1.0 - af)).sqrt();
@@ -105,7 +109,7 @@ impl OnTheFlyGrm {
                 let mean = 2.0 * af;
                 for i in 0..n_samples {
                     let g = if geno[i].is_nan() { mean } else { geno[i] };
-                    std_genotypes[m * n_samples + i] = (g - mean) / denom;
+                    std_genotypes[m * n_samples + i] = ((g - mean) / denom) as f32;
                 }
             }
         }
@@ -119,9 +123,8 @@ impl OnTheFlyGrm {
 
     /// Compute GRM * v on-the-fly using rayon parallelism.
     ///
-    /// Splits marker columns into chunks and processes them in parallel.
-    /// Each thread accumulates a partial result vector, then all partials
-    /// are reduced into the final result.
+    /// Uses f32 for the inner computation to match R SAIGE's float32 precision.
+    /// Input and output are f64 for compatibility with the rest of the pipeline.
     pub fn mat_vec(&self, v: &[f64]) -> Vec<f64> {
         assert_eq!(v.len(), self.n_samples);
         let n = self.n_samples;
@@ -129,6 +132,9 @@ impl OnTheFlyGrm {
         if self.n_markers == 0 {
             return vec![0.0; n];
         }
+
+        // Cast input vector to f32 to match R SAIGE's float32 operations
+        let v_f32: Vec<f32> = v.iter().map(|&x| x as f32).collect();
 
         // Chunk the flat genotype array by marker columns (each column = n elements).
         // Each chunk is a contiguous slice of one or more marker columns.
@@ -138,20 +144,20 @@ impl OnTheFlyGrm {
             markers_per_thread.max(64) * n
         };
 
-        let scale = 1.0 / self.n_markers as f64;
+        let scale = 1.0f32 / self.n_markers as f32;
 
         let result = self
             .std_genotypes
             .par_chunks(chunk_size)
             .fold(
-                || vec![0.0; n],
+                || vec![0.0f32; n],
                 |mut acc, geno_chunk| {
                     let n_markers_in_chunk = geno_chunk.len() / n;
                     for m in 0..n_markers_in_chunk {
                         let col = &geno_chunk[m * n..(m + 1) * n];
-                        // dot = g_m' * v
-                        let dot: f64 = col.iter().zip(v.iter()).map(|(g, vi)| g * vi).sum();
-                        // acc += g_m * dot
+                        // dot = g_m' * v (f32)
+                        let dot: f32 = col.iter().zip(v_f32.iter()).map(|(g, vi)| g * vi).sum();
+                        // acc += g_m * dot (f32)
                         for (a, g) in acc.iter_mut().zip(col.iter()) {
                             *a += g * dot;
                         }
@@ -160,7 +166,7 @@ impl OnTheFlyGrm {
                 },
             )
             .reduce(
-                || vec![0.0; n],
+                || vec![0.0f32; n],
                 |mut a, b| {
                     for (ai, bi) in a.iter_mut().zip(b.iter()) {
                         *ai += *bi;
@@ -169,7 +175,8 @@ impl OnTheFlyGrm {
                 },
             );
 
-        result.into_iter().map(|r| r * scale).collect()
+        // Scale and convert back to f64
+        result.into_iter().map(|r| (r * scale) as f64).collect()
     }
 }
 
