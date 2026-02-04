@@ -58,7 +58,7 @@ saige test \
 
 ### Benchmarks: saige-rs vs SAIGE R
 
-Benchmarked on the included test data (1,000 samples, 100 markers, binary trait, covariates x1 + x2).
+Benchmarked on the included test data (1,000 samples, 10K GRM markers, 100 test variants, binary trait, covariates x1 + x2).
 
 **Environment:**
 - **saige-rs**: Native arm64 release binary on Apple Silicon (M-series Mac)
@@ -67,17 +67,17 @@ Benchmarked on the included test data (1,000 samples, 100 markers, binary trait,
 
 | Step | SAIGE (R) | saige-rs (Rust) | Speedup |
 |---|---|---|---|
-| Step 1: Fit null GLMM | 37.3s | 0.14s | **276x** |
-| Step 2: Association tests | 43.2s | 0.01s | **4,316x** |
-| **Total** | **80.5s** | **0.15s** | **555x** |
+| Step 1: Fit null GLMM | 34.9s | 16.1s | **2x** |
+| Step 2: Association tests | 28.9s | 0.03s | **963x** |
+| **Total** | **63.8s** | **16.1s** | **4x** |
 
-R wall times include Docker/Rosetta 2 overhead. Native Linux R would be faster, but saige-rs is still orders of magnitude faster.
+R wall times include Docker/Rosetta 2 overhead. Step 1 is dominated by GRM computation (O(n²m)), so the speedup is modest; step 2 is orders of magnitude faster.
 
 #### P-value concordance
 
-Both implementations produce correlated p-values (Pearson *r* = 0.75 on −log₁₀ scale, *r* = 0.98 on raw scale) across 70 tested variants with SPA correction enabled. Remaining differences are due to numerical variation in AI-REML convergence (tau_g and variance ratio estimates).
+Both implementations produce highly concordant p-values (Pearson *r* = 0.993 on −log₁₀ scale for MAF ≥ 0.01) across 70 tested variants with SPA correction enabled.
 
 <p align="center">
-  <img src="saige-rs/docs/pvalue_comparison.png" width="480" alt="P-value comparison between SAIGE R and saige-rs" />
+  <img src="saige-rs/docs/pvalue_comparison.png" width="700" alt="P-value comparison and runtime benchmarks between SAIGE R and saige-rs" />
 </p>
 
