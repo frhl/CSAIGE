@@ -67,11 +67,11 @@ Benchmarked on simulated data (2,000 samples, 5K GRM markers, 2,000 test variant
 
 | Step | SAIGE (R) | saige-rs (Rust) | Speedup |
 |---|---|---|---|
-| Step 1: Fit null GLMM | 43.7s | 15.5s | **2.8x** |
-| Step 2: Association tests | 29.4s | 0.12s | **245x** |
-| **Total** | **73.1s** | **15.6s** | **4.7x** |
+| Step 1: Fit null GLMM | 43.7s | 10.0s | **4.4x** |
+| Step 2: Association tests | 29.4s | 0.10s | **294x** |
+| **Total** | **73.1s** | **10.1s** | **7.2x** |
 
-R wall times include Docker/Rosetta 2 overhead. Step 1 is dominated by GRM computation (O(n²m)), so the speedup is modest; step 2 is orders of magnitude faster.
+R wall times include Docker/Rosetta 2 overhead. Step 1 is dominated by GRM computation (O(n²m)); step 2 is orders of magnitude faster.
 
 #### P-value concordance
 

@@ -189,14 +189,22 @@ pub fn run(args: FitNullArgs) -> Result<()> {
     }
     let x = DenseMatrix::from_col_major(n, p, x_data.clone());
 
-    // Read genotype dosages
+    // Read genotype dosages.
+    // R SAIGE reserves a random subset of markers for VR estimation and excludes
+    // them from GRM construction to ensure independence. We match that behavior:
+    // 1. First pass: read all markers passing QC
+    // 2. Randomly select VR candidate indices (1000 draws with dedup, ~900 unique)
+    // 3. Second pass: split into GRM-only and VR-only pools
     info!("Reading genotypes...");
     let n_markers = plink.n_markers();
-    let mut grm_dosages = Vec::new();
-    let mut grm_afs = Vec::new();
-    let mut vr_dosages = Vec::new();
-    let mut vr_macs = Vec::new();
 
+    struct MarkerData {
+        dosages: Vec<f64>,
+        af: f64,
+        mac: f64,
+    }
+
+    let mut all_passing: Vec<MarkerData> = Vec::new();
     let n_samples_valid = valid_ids.len();
     for m in 0..n_markers {
         let data = plink.read_marker(m as u64)?;
@@ -205,24 +213,54 @@ pub fn run(args: FitNullArgs) -> Result<()> {
             && data.af <= 1.0 - args.min_maf
             && missing_rate <= args.max_missing_rate
         {
-            grm_dosages.push(data.dosages.clone());
-            grm_afs.push(data.af);
-        }
-        // Collect markers for VR estimation (MAC >= 20)
-        if data.mac >= 20.0 {
-            vr_dosages.push(data.dosages);
-            vr_macs.push(data.mac);
+            all_passing.push(MarkerData {
+                dosages: data.dosages,
+                af: data.af,
+                mac: data.mac,
+            });
         }
     }
     info!(
-        "Using {} markers for GRM (MAF >= {}, missing <= {})",
-        grm_dosages.len(),
+        "{} markers pass QC (MAF >= {}, missing <= {})",
+        all_passing.len(),
         args.min_maf,
         args.max_missing_rate,
     );
+
+    // Select VR candidate indices: draw 1000 random indices (matching R SAIGE)
+    // from markers with MAC >= 20, then deduplicate.
+    use rand::Rng;
+    use rand::SeedableRng;
+    let mut vr_rng = rand_chacha::ChaCha8Rng::seed_from_u64(args.seed);
+    let n_passing = all_passing.len();
+    let mut vr_candidate_indices: Vec<usize> = (0..1000)
+        .map(|_| vr_rng.gen_range(0..n_passing))
+        .collect();
+    vr_candidate_indices.sort_unstable();
+    vr_candidate_indices.dedup();
+    // Only keep candidates with MAC >= 20
+    vr_candidate_indices.retain(|&i| all_passing[i].mac >= 20.0);
+    let vr_set: std::collections::HashSet<usize> = vr_candidate_indices.iter().copied().collect();
+
+    // Split into GRM and VR pools (mutually exclusive, matching R SAIGE)
+    let mut grm_dosages = Vec::new();
+    let mut grm_afs = Vec::new();
+    let mut vr_dosages = Vec::new();
+    let mut vr_macs = Vec::new();
+
+    for (i, marker) in all_passing.into_iter().enumerate() {
+        if vr_set.contains(&i) {
+            vr_dosages.push(marker.dosages);
+            vr_macs.push(marker.mac);
+        } else {
+            grm_dosages.push(marker.dosages);
+            grm_afs.push(marker.af);
+        }
+    }
     info!(
-        "Available markers for VR estimation: {} (MAC >= 20)",
-        vr_dosages.len()
+        "Using {} markers for GRM, {} reserved for VR estimation",
+        grm_dosages.len(),
+        vr_dosages.len(),
     );
 
     // Build on-the-fly GRM (takes reference, copies internally)
