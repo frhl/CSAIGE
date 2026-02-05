@@ -75,7 +75,16 @@ R wall times include Docker/Rosetta 2 overhead. Step 1 is dominated by GRM compu
 
 #### P-value concordance
 
-Both implementations produce highly concordant p-values across 1,998 tested variants with SPA correction enabled. Concordance is strongest for low-frequency and rare variants (Pearson *r* > 0.997 on −log₁₀ scale for MAF < 0.05), with overall *r* = 0.946 across all MAF categories.
+Both implementations produce highly concordant p-values across 1,998 tested variants with SPA correction enabled.
+
+| Metric | Value |
+|--------|-------|
+| P-value correlation (-log₁₀) | **0.995** |
+| BETA correlation | **0.9997** |
+| SE correlation | **0.9994** |
+| Sign concordance | **99.4%** |
+
+**Note:** R SAIGE must be run with `--is_fastTest=FALSE` for accurate variance estimation. The default `--is_fastTest=TRUE` uses an approximate formula that can produce inflated variance for high-AF variants.
 
 <p align="center">
   <img src="saige-rs/docs/pvalue_comparison.png" width="700" alt="P-value comparison and runtime benchmarks between SAIGE R and saige-rs" />
